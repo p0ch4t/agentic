@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cline Desktop - AI Agent</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="app-title">
+                    <span class="icon">🤖</span>
+                    Cline Desktop
+                </h1>
+                <div class="header-actions">
+                    <button id="settingsBtn" class="btn btn-secondary">
+                        <span class="icon">⚙️</span>
+                        Settings
+                    </button>
+                    <button id="helpBtn" class="btn btn-secondary">
+                        <span class="icon">❓</span>
+                        Help
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Task Input Section -->
+            <section class="task-input-section">
+                <div class="task-input-container">
+                    <h2>What would you like me to help you with?</h2>
+                    <div class="input-group">
+                        <textarea 
+                            id="taskInput" 
+                            placeholder="Describe your task here... For example: 'Create a simple web page with a form' or 'Help me debug this Python script'"
+                            rows="4"
+                        ></textarea>
+                        <div class="input-actions">
+                            <button id="startTaskBtn" class="btn btn-primary btn-large">
+                                <span class="icon">🚀</span>
+                                Start Task
+                            </button>
+                            <button id="clearInputBtn" class="btn btn-secondary">
+                                <span class="icon">🗑️</span>
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Task Status Section -->
+            <section id="taskStatusSection" class="task-status-section hidden">
+                <div class="status-container">
+                    <h3>Task Status</h3>
+                    <div class="status-info">
+                        <div class="status-item">
+                            <span class="label">Status:</span>
+                            <span id="taskStatus" class="value">Ready</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Progress:</span>
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div id="progressFill" class="progress-fill"></div>
+                                </div>
+                                <span id="progressText" class="progress-text">0%</span>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <span class="label">Message:</span>
+                            <span id="taskMessage" class="value">Waiting to start...</span>
+                        </div>
+                    </div>
+                    <div class="status-actions">
+                        <button id="pauseTaskBtn" class="btn btn-warning">
+                            <span class="icon">⏸️</span>
+                            Pause
+                        </button>
+                        <button id="stopTaskBtn" class="btn btn-danger">
+                            <span class="icon">⏹️</span>
+                            Stop
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Chat Section -->
+            <section id="chatSection" class="chat-section hidden">
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <h3>Task Conversation</h3>
+                        <button id="clearChatBtn" class="btn btn-secondary btn-small">
+                            <span class="icon">🗑️</span>
+                            Clear Chat
+                        </button>
+                    </div>
+                    <div id="chatMessages" class="chat-messages">
+                        <!-- Messages will be added here dynamically -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tool Approval Section -->
+            <section id="toolApprovalSection" class="tool-approval-section hidden">
+                <div class="approval-container">
+                    <h3>Tool Approval Required</h3>
+                    <div class="tool-info">
+                        <div class="tool-name">
+                            <span class="label">Tool:</span>
+                            <span id="toolName" class="value">Unknown Tool</span>
+                        </div>
+                        <div class="tool-description">
+                            <span class="label">Description:</span>
+                            <span id="toolDescription" class="value">No description available</span>
+                        </div>
+                        <div class="tool-input">
+                            <span class="label">Input:</span>
+                            <pre id="toolInput" class="value">No input data</pre>
+                        </div>
+                    </div>
+                    <div class="approval-actions">
+                        <button id="approveToolBtn" class="btn btn-success">
+                            <span class="icon">✅</span>
+                            Approve
+                        </button>
+                        <button id="rejectToolBtn" class="btn btn-danger">
+                            <span class="icon">❌</span>
+                            Reject
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- File Diff Section -->
+            <section id="fileDiffSection" class="file-diff-section hidden">
+                <div class="diff-container">
+                    <h3>File Changes</h3>
+                    <div class="diff-info">
+                        <div class="file-path">
+                            <span class="label">File:</span>
+                            <span id="diffFilePath" class="value">Unknown file</span>
+                        </div>
+                    </div>
+                    <div class="diff-content">
+                        <div class="diff-side">
+                            <h4>Original</h4>
+                            <pre id="originalContent" class="code-content"></pre>
+                        </div>
+                        <div class="diff-side">
+                            <h4>Modified</h4>
+                            <pre id="modifiedContent" class="code-content"></pre>
+                        </div>
+                    </div>
+                    <div class="diff-actions">
+                        <button id="approveDiffBtn" class="btn btn-success">
+                            <span class="icon">✅</span>
+                            Apply Changes
+                        </button>
+                        <button id="rejectDiffBtn" class="btn btn-danger">
+                            <span class="icon">❌</span>
+                            Reject Changes
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Logs Section -->
+            <section id="logsSection" class="logs-section hidden">
+                <div class="logs-container">
+                    <div class="logs-header">
+                        <h3>Task Logs</h3>
+                        <button id="clearLogsBtn" class="btn btn-secondary btn-small">
+                            <span class="icon">🗑️</span>
+                            Clear Logs
+                        </button>
+                    </div>
+                    <div id="logsContent" class="logs-content">
+                        <!-- Logs will be added here dynamically -->
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer">
+            <div class="footer-content">
+                <span class="footer-text">Cline Desktop v1.0.0</span>
+                <div class="footer-actions">
+                    <button id="showLogsBtn" class="btn btn-text">
+                        <span class="icon">📋</span>
+                        Show Logs
+                    </button>
+                    <button id="debugBtn" class="btn btn-text">
+                        <span class="icon">🐛</span>
+                        Debug
+                    </button>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button id="closeSettingsBtn" class="btn btn-text">
+                    <span class="icon">✕</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="setting-group">
+                    <label for="aiModelSelect">AI Model:</label>
+                    <select id="aiModelSelect">
+                        <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                        <option value="claude-3-haiku">Claude 3 Haiku</option>
+                        <option value="gpt-4">GPT-4</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label for="apiKeyInput">API Key:</label>
+                    <input type="password" id="apiKeyInput" placeholder="Enter your API key">
+                </div>
+                <div class="setting-group">
+                    <label for="maxTokensInput">Max Tokens:</label>
+                    <input type="number" id="maxTokensInput" value="4000" min="100" max="100000">
+                </div>
+                <div class="setting-group">
+                    <label for="temperatureInput">Temperature:</label>
+                    <input type="range" id="temperatureInput" min="0" max="2" step="0.1" value="0.7">
+                    <span id="temperatureValue">0.7</span>
+                </div>
+                <div class="setting-group">
+                    <label>
+                        <input type="checkbox" id="autoApproveCheckbox">
+                        Auto-approve simple operations
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+                <button id="cancelSettingsBtn" class="btn btn-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Help & Usage</h3>
+                <button id="closeHelpBtn" class="btn btn-text">
+                    <span class="icon">✕</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <h4>Getting Started</h4>
+                <p>Describe your task in natural language and Cline will help you accomplish it step by step.</p>
+                
+                <h4>Example Tasks</h4>
+                <ul>
+                    <li>"Create a simple HTML page with CSS styling"</li>
+                    <li>"Help me debug this Python script"</li>
+                    <li>"Set up a Node.js project with Express"</li>
+                    <li>"Create a React component for a todo list"</li>
+                </ul>
+                
+                <h4>Features</h4>
+                <ul>
+                    <li><strong>File Operations:</strong> Create, read, and modify files</li>
+                    <li><strong>Terminal Commands:</strong> Execute system commands safely</li>
+                    <li><strong>Code Analysis:</strong> Understand and improve your code</li>
+                    <li><strong>Project Setup:</strong> Initialize and configure projects</li>
+                </ul>
+                
+                <h4>Safety</h4>
+                <p>Cline will always ask for your approval before making changes to your system or files.</p>
+            </div>
+            <div class="modal-footer">
+                <button id="closeHelpModalBtn" class="btn btn-primary">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html> 

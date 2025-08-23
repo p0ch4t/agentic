@@ -1,56 +1,30 @@
 {
 	"compilerOptions": {
-		"esModuleInterop": true,
-		"experimentalDecorators": true,
-		"forceConsistentCasingInFileNames": true,
-		"isolatedModules": true,
-		"lib": [
-			"es2022",
-			"DOM"
-		],
-		"module": "esnext",
-		"moduleResolution": "Bundler",
-		"noFallthroughCasesInSwitch": true,
-		"noImplicitOverride": true,
-		"noImplicitReturns": true,
-		"noUnusedLocals": false,
-		"resolveJsonModule": true,
-		"rootDir": ".",
-		"skipLibCheck": true,
-		"sourceMap": true,
+		"target": "ES2020",
+		"module": "commonjs",
+		"lib": ["ES2020", "DOM"],
+		"outDir": "./dist",
+		"rootDir": "./src",
 		"strict": true,
-		"target": "es2022",
-		"useDefineForClassFields": true,
-		"useUnknownInCatchVariables": false,
-		"baseUrl": ".",
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"allowSyntheticDefaultImports": true,
+		"moduleResolution": "node",
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+		"baseUrl": "./src",
 		"paths": {
-			"@/*": [
-				"src/*"
-			],
-			"@core/*": [
-				"src/core/*"
-			],
-			"@generated/*": [
-				"src/generated/*"
-			],
-			"@hosts/*": [
-				"src/hosts/*"
-			],
-			"@integrations/*": [
-				"src/integrations/*"
-			],
-			"@packages/*": [
-				"src/packages/*"
-			],
-			"@services/*": [
-				"src/services/*"
-			],
-			"@shared/*": [
-				"src/shared/*"
-			],
-			"@utils/*": [
-				"src/utils/*"
-			]
+			"@/*": ["*"],
+			"@core/*": ["core/*"],
+			"@services/*": ["services/*"],
+			"@integrations/*": ["integrations/*"],
+			"@shared/*": ["shared/*"],
+			"@utils/*": ["utils/*"]
 		}
 	},
 	"include": [
@@ -58,8 +32,7 @@
 	],
 	"exclude": [
 		"node_modules",
-		".vscode-test",
-		"webview-ui",
-		"src/test/e2e/**/*"
+		"dist",
+		"webview-ui"
 	]
 }
