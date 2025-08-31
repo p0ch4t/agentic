@@ -9,26 +9,25 @@ export interface TextContent {
 }
 
 export const toolUseNames = [
-  "execute_command",
-  "read_file",
-  "write_to_file",
-  "replace_in_file",
-  "search_files",
-  "list_files",
-  "list_code_definition_names",
-  "browser_action",
-  "use_mcp_tool",
-  "access_mcp_resource",
-  "ask_followup_question",
-  "plan_mode_respond",
-  "load_mcp_documentation",
-  "attempt_completion",
-  "new_task",
-  "condense",
-  "summarize_task",
-  "report_bug",
-  "new_rule",
-  "web_fetch",
+  // 🔒 CORE APPSEC FUNCTIONS
+  "execute_command",        // ⭐ CRÍTICO: curl, nmap, burp, etc.
+  "read_file",             // ⭐ CRÍTICO: Análisis de código fuente
+  "write_to_file",         // ⭐ CRÍTICO: Generar reportes, payloads
+  "search_files",          // ⭐ CRÍTICO: Buscar vulnerabilidades en código
+  "list_files",            // ⭐ CRÍTICO: Explorar estructura de aplicaciones
+
+  // 🌐 WEB PENTESTING
+  "web_fetch",             // ⭐ CRÍTICO: HTTP requests, análisis de respuestas
+
+  // 🧠 MEMORIA Y CONTEXTO
+  "create_memory",         // ⭐ CRÍTICO: Recordar vulnerabilidades encontradas
+  "update_memory",         // ⭐ CRÍTICO: Actualizar hallazgos
+  "delete_memory",         // Limpiar información obsoleta
+  "search_memories",       // ⭐ CRÍTICO: Buscar vulnerabilidades previas
+
+  // 🔧 MCP TOOLS (Para herramientas externas)
+  "use_mcp_tool",          // ⭐ CRÍTICO: Integrar Burp, OWASP ZAP, etc.
+  "access_mcp_resource",   // Acceder a recursos de herramientas
 ] as const;
 
 // Converts array of tool call names into a union type ("execute_command" | "read_file" | ...)

@@ -25,29 +25,13 @@
   },
   "security": {
     "allowedCommands": [
-      "ls",
-      "dir",
-      "pwd",
-      "cd",
-      "cat",
-      "type",
-      "head",
-      "tail",
-      "find",
-      "grep",
-      "ps",
-      "top",
-      "df",
-      "du",
-      "whoami",
-      "date",
-      "npm",
-      "node",
-      "git",
-      "python",
-      "pip",
-      "java",
-      "mvn"
+      "ls", "dir", "pwd", "cd", "cat", "type", "head", "tail", "find", "grep",
+      "ps", "top", "df", "du", "whoami", "date",
+      "curl", "wget", "nc", "netcat", "telnet", "ping", "traceroute",
+      "nmap", "nikto", "dirb", "gobuster", "ffuf", "wfuzz",
+      "sqlmap", "hydra", "john", "hashcat",
+      "burpsuite", "zaproxy", "nuclei", "subfinder", "amass",
+      "git", "python", "pip", "node", "npm", "java", "mvn"
     ],
     "blockedCommands": [
       "rm -rf",
@@ -61,33 +45,19 @@
       "chown -R"
     ],
     "allowedDomains": [
-      "api.github.com",
-      "registry.npmjs.org",
-      "pypi.org",
-      "maven.apache.org"
+      "*",
+      "api.github.com", "registry.npmjs.org", "pypi.org", "maven.apache.org",
+      "cve.mitre.org", "nvd.nist.gov", "exploit-db.com", "packetstormsecurity.com",
+      "vulndb.cyberriskanalytics.com", "cvedetails.com"
     ],
     "maxFileSizeBytes": 10485760,
     "allowedFileExtensions": [
-      ".js",
-      ".ts",
-      ".jsx",
-      ".tsx",
-      ".json",
-      ".md",
-      ".txt",
-      ".py",
-      ".java",
-      ".go",
-      ".rs",
-      ".cpp",
-      ".c",
-      ".h",
-      ".css",
-      ".scss",
-      ".html",
-      ".xml",
-      ".yaml",
-      ".yml"
+      ".js", ".ts", ".jsx", ".tsx", ".json", ".md", ".txt",
+      ".py", ".java", ".go", ".rs", ".cpp", ".c", ".h",
+      ".php", ".asp", ".aspx", ".jsp", ".rb", ".pl", ".sh",
+      ".css", ".scss", ".html", ".xml", ".yaml", ".yml",
+      ".config", ".conf", ".ini", ".env", ".properties",
+      ".sql", ".db", ".sqlite", ".log"
     ]
   }
 }

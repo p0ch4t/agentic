@@ -70,17 +70,17 @@
                     <div class="example-prompts">
                         <h3>Try asking me:</h3>
                         <div class="prompt-suggestions">
-                            <button class="suggestion-btn" data-prompt="Create a simple Python web server">
-                                "Create a simple Python web server"
+                            <button class="suggestion-btn" data-prompt="Mi nombre es Juan, ayúdame a crear una API REST">
+                                "Mi nombre es Juan, ayúdame a crear una API REST"
                             </button>
-                            <button class="suggestion-btn" data-prompt="Help me debug this JavaScript code">
-                                "Help me debug this JavaScript code"
+                            <button class="suggestion-btn" data-prompt="Analiza mi proyecto y sugiere mejoras">
+                                "Analiza mi proyecto y sugiere mejoras"
                             </button>
-                            <button class="suggestion-btn" data-prompt="List all files in my current directory">
-                                "List all files in my current directory"
+                            <button class="suggestion-btn" data-prompt="Encuentra y corrige errores en mi código">
+                                "Encuentra y corrige errores en mi código"
                             </button>
-                            <button class="suggestion-btn" data-prompt="Explain how to set up a React project">
-                                "Explain how to set up a React project"
+                            <button class="suggestion-btn" data-prompt="Configura un entorno de desarrollo completo">
+                                "Configura un entorno de desarrollo completo"
                             </button>
                         </div>
                     </div>
@@ -120,6 +120,8 @@
                     </div>
                 </div>
             </section>
+
+
 
             <!-- Tool Approval Section -->
             <section id="toolApprovalSection" class="tool-approval-section hidden">
@@ -262,6 +264,13 @@
                         </label>
                         <small>Show responses as they're generated.</small>
                     </div>
+                    <div class="setting-group">
+                        <label>
+                            <input type="checkbox" id="persistentMemoryCheckbox">
+                            Mantener memoria entre conversaciones
+                        </label>
+                        <small>Si está activado, el AI recordará información de conversaciones anteriores. Si está desactivado, cada conversación empezará con memoria limpia.</small>
+                    </div>
                 </div>
 
                 <!-- Safety Settings -->
@@ -279,6 +288,13 @@
                             Auto-approve directory listing
                         </label>
                         <small>Automatically approve listing files and directories.</small>
+                    </div>
+                    <div class="setting-group">
+                        <label>
+                            <input type="checkbox" id="autoRunCommandsCheckbox">
+                            Auto-run commands (Modo Auto-Run)
+                        </label>
+                        <small>Automatically execute all suggested commands without confirmation.</small>
                     </div>
                     <div class="setting-group">
                         <label>

@@ -614,6 +614,114 @@ body {
     }
 }
 
+/* ===== COMMAND CONFIRMATION IN CHAT ===== */
+.message.command-confirmation {
+    align-self: flex-start;
+    background: linear-gradient(135deg, #e6f3ff 0%, #f0f9ff 100%);
+    max-width: 85%;
+    position: relative;
+    padding-top: 20px;
+    padding-right: 60px;
+}
+
+.message.command-confirmation .message-content {
+    color: #1e40af;
+}
+
+.message.command-confirmation .message-text {
+    text-align: left;
+}
+
+.command-confirmation-overlay {
+    position: absolute;
+    top: -15px;
+    right: -15px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+
+.confirmation-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.confirmation-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.confirmation-btn.approve {
+    background: #22c55e;
+    color: white;
+}
+
+.confirmation-btn.approve:hover {
+    background: #16a34a;
+}
+
+.confirmation-btn.reject {
+    background: #ef4444;
+    color: white;
+}
+
+.confirmation-btn.reject:hover {
+    background: #dc2626;
+}
+
+.message.command-confirmation .message-text {
+    line-height: 1.6;
+}
+
+.command-code {
+    background: #2d3748;
+    color: #e2e8f0;
+    padding: 0.75rem;
+    border-radius: 6px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 0.9rem;
+    display: block;
+    word-break: break-all;
+    white-space: pre-wrap;
+    margin: 8px 0;
+}
+
+.command-waiting {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 8px;
+    padding: 0.5rem;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: #3b82f6;
+}
+
+.waiting-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e5e7eb;
+    border-top: 2px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 /* ===== TOOL APPROVAL ===== */
 .tool-approval-section {
     background: rgba(255, 255, 255, 0.95);

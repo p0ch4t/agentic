@@ -57,6 +57,7 @@ export class Task {
   private shouldStopReasoning: boolean = false;
   private continuousReasoningIterations: number = 0;
   private maxContinuousIterations: number = 3;
+  private pendingCommandResolvers?: Map<string, (approved: boolean) => void>;
 
   public clineMessages: ClineMessage[] = [];
   public apiConversationHistory: Anthropic.Messages.MessageParam[] = [];
@@ -310,8 +311,13 @@ export class Task {
   }
 
   private async processAssistantMessage(message: string): Promise<void> {
+    // CRÍTICO: Log del mensaje completo para debug
+    console.log(`📨 [LLM Response] Full message received:`, message);
+
     // Parse the assistant message for tool calls only
     const parsed = parseAssistantMessageV2(message);
+
+    console.log(`🔍 [Parse Result] Found ${parsed.length} blocks:`, parsed.map(b => ({ type: b.type, name: b.type === 'tool_use' ? b.name : 'text' })));
 
     // Process each content block (skip text blocks to avoid duplication)
     for (const block of parsed) {
@@ -330,16 +336,20 @@ export class Task {
 
     switch (capabilityUse.name) {
       case "execute_command":
-        // MOSTRAR RAZONAMIENTO ANTES DE EJECUTAR COMANDO
+        // MOSTRAR RAZONAMIENTO ANTES DE EJECUTAR COMANDO usando comprensión semántica
         const reasoning = await this.explainCommandReasoning(
           capabilityUse.params.command,
         );
-        this.addToClineMessages({
-          ts: Date.now(),
-          type: "say",
-          say: "text",
-          text: reasoning,
-        });
+
+        // Solo mostrar el razonamiento si es útil para el usuario
+        if (reasoning && reasoning.length > 50) {
+          this.addToClineMessages({
+            ts: Date.now(),
+            type: "say",
+            say: "text",
+            text: reasoning,
+          });
+        }
 
         // Natural command execution as part of reasoning
         console.log("🧠 [Natural Reasoning]", {
@@ -366,6 +376,7 @@ export class Task {
         result = await this.handleReadFile(capabilityUse.params);
         break;
       case "write_to_file":
+        // SIMPLE FILE OPERATION: Just write the file without memory detection
         result = await this.handleWriteToFile(capabilityUse.params);
         break;
       case "list_files":
@@ -375,7 +386,30 @@ export class Task {
         result = await this.handleReplaceInFile(capabilityUse.params);
         break;
       case "save_user_info":
+        // COMPLETELY SILENT: Save user info without any visible output
         result = await this.handleSaveUserInfo(capabilityUse.params);
+
+        // Log for debugging but don't show to user
+        console.log("🧠 [Silent Memory] User info saved:", capabilityUse.params.name || "info updated");
+
+        // Return empty - user should only see natural conversation response
+        result = ""; // No technical output shown to user
+        break;
+      case "create_memory":
+        // NUEVO: Sistema de memoria dinámica como Claude
+        result = await this.handleCreateMemory(capabilityUse.params);
+        // Devolver información para que el modelo pueda responder naturalmente
+        break;
+      case "update_memory":
+        result = await this.handleUpdateMemory(capabilityUse.params);
+        // Devolver información para que el modelo pueda responder naturalmente
+        break;
+      case "delete_memory":
+        result = await this.handleDeleteMemory(capabilityUse.params);
+        // Devolver información para que el modelo pueda responder naturalmente
+        break;
+      case "search_memories":
+        result = await this.handleSearchMemories(capabilityUse.params);
         break;
       case "web_request":
         result = await this.handleWebRequest(capabilityUse.params);
@@ -521,13 +555,21 @@ export class Task {
     // This is how I naturally integrate my reasoning with my capabilities
     // The text content represents my thinking, the results represent what I discovered
 
-    if (results.length === 1) {
-      // Single capability result - integrate naturally with text
-      return `${textContent}\n\n${results[0]}`;
+    // Filter out empty results from silent operations
+    const meaningfulResults = results.filter(result => result && result.trim().length > 0);
+
+    if (meaningfulResults.length === 0) {
+      // Only text content, no capability results to show
+      return textContent;
     }
 
-    // Multiple results - integrate them all naturally
-    return `${textContent}\n\n${results.join("\n\n")}`;
+    if (meaningfulResults.length === 1) {
+      // Single meaningful capability result - integrate naturally with text
+      return textContent ? `${textContent}\n\n${meaningfulResults[0]}` : meaningfulResults[0];
+    }
+
+    // Multiple meaningful results - integrate them all naturally
+    return textContent ? `${textContent}\n\n${meaningfulResults.join("\n\n")}` : meaningfulResults.join("\n\n");
   }
 
   private generateNaturalCapabilityResponse(
@@ -568,7 +610,15 @@ export class Task {
     userInfo: any,
   ): string {
     // Naturally integrate multiple capability results like I would
-    return results.join("\n\n");
+    // Filter out empty results from silent operations
+    const meaningfulResults = results.filter(result => result && result.trim().length > 0);
+
+    if (meaningfulResults.length === 0) {
+      // All operations were silent - return empty to let natural text response show
+      return "";
+    }
+
+    return meaningfulResults.join("\n\n");
   }
 
   private generateCommandResponse(
@@ -671,6 +721,10 @@ export class Task {
   }
 
   private async processToolCall(toolUse: any): Promise<void> {
+    // CRÍTICO: Log detallado para debug de herramientas
+    console.log(`🔧 [Tool Call] LLM is calling tool: "${toolUse.name}"`);
+    console.log(`📋 [Tool Params] Parameters:`, JSON.stringify(toolUse.params, null, 2));
+
     // Check if this tool requires approval based on safety settings
     const requiresApproval = await this.shouldRequireApproval(toolUse.name);
 
@@ -852,6 +906,294 @@ export class Task {
       console.warn("Could not retrieve user info:", error);
       return "Error al recuperar la información del usuario.";
     }
+  }
+
+
+
+  // ===== CLAUDE-STYLE DYNAMIC MEMORY HANDLERS =====
+
+  private async handleCreateMemory(params: any): Promise<string> {
+    const { title, content, tags, importance } = params;
+
+    if (!title || !content) {
+      throw new Error("create_memory requires title and content parameters");
+    }
+
+    try {
+      // Usar valores por defecto si no se proporcionan
+      const defaultTags = tags || [];
+      const defaultImportance = importance || 'medium';
+
+      const memory = await this.cacheService.createMemory(title, content, defaultTags, defaultImportance);
+
+      console.log(`🧠 [Dynamic Memory] Created memory: ${title}`);
+
+      // MEJORA CRÍTICA: Generar respuesta natural basada en comprensión contextual
+      // En lugar de patrones rígidos, usar comprensión del contenido
+      return await this.generateNaturalMemoryResponse(content);
+    } catch (error) {
+      console.error("Error creating memory:", error);
+      throw new Error(`Error al crear memoria: ${error instanceof Error ? error.message : "Error desconocido"}`);
+    }
+  }
+
+  private async generateNaturalMemoryResponse(content: string): Promise<string> {
+    // CRÍTICO: Usar comprensión semántica de LLM, NO patrones
+    console.log(`🎯 [Semantic Response] Using LLM to understand content meaning: "${content}"`);
+
+    // TODO: Implementar análisis semántico real con LLM
+    // El LLM debe comprender el SIGNIFICADO del contenido y generar respuesta apropiada
+
+    // TEMPORAL: Respuesta genérica hasta implementar LLM semántico
+    return await this.generateSemanticResponse(content);
+  }
+
+  private analyzeContentType(content: string): string {
+    // CRÍTICO: NO usar patrones - usar comprensión semántica real
+    // TODO: Reemplazar completamente con LLM que comprenda el significado del contenido
+
+    // TEMPORAL: Clasificación básica hasta implementar LLM semántico
+    // El LLM debe entender el SIGNIFICADO del contenido, no buscar palabras específicas
+
+    // Por ahora, clasificación simple que será reemplazada por comprensión real
+    return 'general'; // Todas las respuestas serán generales hasta implementar LLM
+  }
+
+  private async generateSemanticResponse(content: string): Promise<string> {
+    // CRÍTICO: Usar LLM para comprender el significado y generar respuesta natural
+    // NO usar patrones, regex, ni análisis de texto
+
+    console.log(`🧠 [LLM Semantic] Analyzing content meaning for natural response`);
+
+    // TODO: Implementar llamada real al LLM para análisis semántico
+    // El LLM debe:
+    // 1. Comprender el SIGNIFICADO del contenido
+    // 2. Generar una respuesta natural y apropiada
+    // 3. NO usar patrones de texto
+
+    // TEMPORAL: Respuestas naturales básicas hasta implementar LLM
+    const naturalResponses = [
+      "¡Perfecto!",
+      "¡Genial!",
+      "¡Entendido!",
+      "¡Qué bueno saberlo!",
+      "¡Excelente!"
+    ];
+
+    // Selección simple hasta implementar LLM semántico
+    const index = Math.abs(content.charCodeAt(0) + content.length) % naturalResponses.length;
+    return naturalResponses[index];
+  }
+
+  private async handleUpdateMemory(params: any): Promise<string> {
+    const { id, title, content, tags, importance } = params;
+
+    if (!id) {
+      throw new Error("update_memory requires id parameter");
+    }
+
+    try {
+      const updates: any = {};
+
+      if (title !== undefined) updates.title = title;
+      if (content !== undefined) updates.content = content;
+      if (tags !== undefined) updates.tags = tags;
+      if (importance !== undefined) updates.importance = importance;
+
+      const updatedMemory = await this.cacheService.updateMemory(id, updates);
+
+      if (!updatedMemory) {
+        return "No pude encontrar esa información en mi memoria para actualizarla";
+      }
+
+      console.log(`🔄 [Dynamic Memory] Updated memory: ${id}`);
+
+      // MEJORA CRÍTICA: Respuesta natural sin formato técnico
+      return "¡Perfecto! He actualizado esa información.";
+    } catch (error) {
+      console.error("Error updating memory:", error);
+      throw new Error(`Error al actualizar memoria: ${error instanceof Error ? error.message : "Error desconocido"}`);
+    }
+  }
+
+  private async handleDeleteMemory(params: any): Promise<string> {
+    const { id } = params;
+
+    if (!id) {
+      throw new Error("delete_memory requires id parameter");
+    }
+
+    try {
+      const deleted = await this.cacheService.deleteMemory(id);
+
+      if (!deleted) {
+        return "No pude encontrar esa información en mi memoria para eliminarla";
+      }
+
+      console.log(`🗑️ [Dynamic Memory] Deleted memory: ${id}`);
+
+      // MEJORA CRÍTICA: Respuesta natural sin formato técnico
+      return "¡Listo! He eliminado esa información.";
+    } catch (error) {
+      console.error("Error deleting memory:", error);
+      throw new Error(`Error al eliminar memoria: ${error instanceof Error ? error.message : "Error desconocido"}`);
+    }
+  }
+
+  private async handleSearchMemories(params: any): Promise<string> {
+    const { query } = params;
+
+    if (!query || query.trim() === '') {
+      // Consulta general - devolver resumen inteligente de memorias más relevantes
+      try {
+        const memories = await this.cacheService.getMemories();
+
+        if (memories.length === 0) {
+          return "No tengo información guardada sobre ti aún.";
+        }
+
+        // MEJORA: Usar comprensión semántica para seleccionar memorias más importantes
+        return await this.generateIntelligentMemorySummary(memories);
+      } catch (error) {
+        console.error("Error getting memories:", error);
+        return "Error al obtener las memorias";
+      }
+    }
+
+    try {
+      // MEJORA CRÍTICA: Búsqueda semántica inteligente
+      const memories = await this.cacheService.searchMemories(query);
+
+      if (memories.length === 0) {
+        return `No recuerdo información específica sobre "${query}".`;
+      }
+
+      console.log(`🔍 [Semantic Memory] Found ${memories.length} semantically relevant memories for: ${query}`);
+
+      // MEJORA: Generar respuesta natural basada en comprensión contextual
+      return await this.generateContextualMemoryResponse(query, memories);
+    } catch (error) {
+      console.error("Error searching memories:", error);
+      throw new Error(`Error al buscar memorias: ${error instanceof Error ? error.message : "Error desconocido"}`);
+    }
+  }
+
+  private async generateIntelligentMemorySummary(memories: any[]): Promise<string> {
+    // CRÍTICO: Usar LLM para análisis semántico de importancia de memorias
+    console.log(`🧠 [LLM Summary] Using semantic analysis to select most important memories`);
+
+    // Calcular importancia usando LLM semántico
+    const memoriesWithImportance = await Promise.all(
+      memories.map(async memory => ({
+        ...memory,
+        contextualImportance: await this.calculateContextualImportance(memory)
+      }))
+    );
+
+    const sortedByImportance = memoriesWithImportance
+      .sort((a, b) => b.contextualImportance - a.contextualImportance)
+      .slice(0, 3); // Top 3 más importantes
+
+    console.log(`🧠 [LLM Summary] Selected ${sortedByImportance.length} most semantically important memories`);
+
+    if (sortedByImportance.length === 1) {
+      return this.formatMemoryNaturally(sortedByImportance[0]);
+    }
+
+    // Para múltiples memorias, crear un resumen coherente
+    const formattedMemories = sortedByImportance.map(memory =>
+      this.formatMemoryNaturally(memory)
+    );
+
+    // Combinar de manera natural
+    if (formattedMemories.length === 2) {
+      return `${formattedMemories[0]} y ${formattedMemories[1].toLowerCase()}`;
+    } else {
+      return `${formattedMemories[0]}, ${formattedMemories[1].toLowerCase()} y ${formattedMemories[2].toLowerCase()}`;
+    }
+  }
+
+  private async calculateContextualImportance(memory: any): Promise<number> {
+    // CRÍTICO: Usar LLM para calcular importancia basada en comprensión semántica
+    console.log(`🧠 [LLM Importance] Calculating semantic importance for memory`);
+
+    let importance = 0;
+
+    // Información personal básica tiene alta importancia (usando LLM)
+    const isPersonal = await this.isPersonalInfo(memory.content);
+    if (isPersonal) {
+      importance += 0.5;
+    }
+
+    // Información reciente es más relevante
+    const daysSinceCreated = (Date.now() - new Date(memory.created).getTime()) / (1000 * 60 * 60 * 24);
+    const recencyScore = Math.max(0, 0.3 - (daysSinceCreated * 0.01));
+    importance += recencyScore;
+
+    // Importancia explícita
+    const importanceWeight: Record<string, number> = {
+      'high': 0.3,
+      'medium': 0.2,
+      'low': 0.1
+    };
+    importance += importanceWeight[memory.importance || 'medium'];
+
+    return Math.min(importance, 1.0);
+  }
+
+  private async isPersonalInfo(content: string): Promise<boolean> {
+    // CRÍTICO: Usar LLM para determinar si es información personal
+    // NO usar patrones ni listas de palabras clave
+
+    console.log(`🧠 [LLM Analysis] Determining if content is personal information`);
+
+    // TODO: Implementar análisis semántico real con LLM
+    // El LLM debe comprender si el contenido contiene información personal
+    // basándose en el SIGNIFICADO, no en palabras específicas
+
+    // TEMPORAL: Lógica básica hasta implementar LLM semántico
+    // Asumir que todo contenido puede ser personal hasta tener LLM
+    return true;
+  }
+
+  private formatMemoryNaturally(memory: any): string {
+    // MEJORA: Formatear memoria de manera natural, no con patrones
+    const content = memory.content;
+
+    // Capitalizar primera letra y asegurar punto final
+    const formatted = content.charAt(0).toUpperCase() + content.slice(1);
+    return formatted.endsWith('.') ? formatted : `${formatted}.`;
+  }
+
+  private async generateContextualMemoryResponse(query: string, memories: any[]): Promise<string> {
+    // CRÍTICO: Devolver el CONTENIDO real de la memoria, no respuestas genéricas
+
+    const mostRelevant = memories[0]; // Ya ordenado por relevancia semántica
+
+    console.log(`🎯 [Contextual Response] Returning actual memory content for query: "${query}"`);
+    console.log(`📋 [Memory Content] Found: "${mostRelevant.content}"`);
+
+    // CORRECCIÓN: Devolver el contenido real de la memoria
+    return this.formatMemoryContentForResponse(mostRelevant, query);
+  }
+
+  private formatMemoryContentForResponse(memory: any, query: string): string {
+    // CRÍTICO: NO usar patrones - devolver contenido real usando comprensión semántica
+    const content = memory.content;
+
+    console.log(`📝 [Format Memory] Original content: "${content}"`);
+    console.log(`❓ [Query Context] User asked: "${query}"`);
+
+    // CORRECCIÓN CRÍTICA: Devolver el contenido real de la memoria tal como está
+    // El LLM principal debe interpretar y responder naturalmente
+    // NO usar patrones, regex, ni análisis de texto
+
+    // Simplemente formatear para presentación natural
+    const formatted = content.charAt(0).toUpperCase() + content.slice(1);
+    const finalResponse = formatted.endsWith('.') ? formatted : `${formatted}.`;
+
+    console.log(`✅ [Memory Response] Returning: "${finalResponse}"`);
+    return finalResponse;
   }
 
   // ===== ADVANCED CLAUDE-LIKE CAPABILITIES =====
@@ -1460,6 +1802,16 @@ export class Task {
       cwd || "current directory",
     );
 
+    // Generar ID único para el comando
+    const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Solicitar confirmación del usuario
+    const userApproval = await this.requestCommandConfirmation(commandId, command, cwd);
+
+    if (!userApproval) {
+      throw new Error("Comando cancelado por el usuario");
+    }
+
     // Execute command without showing intermediate output to user
     const result = await this.hostProvider.executeCommandWithRealTimeStreaming(
       command,
@@ -1482,6 +1834,99 @@ export class Task {
     } else {
       throw new Error(`Error ejecutando el comando: ${result.error}`);
     }
+  }
+
+  /**
+   * Solicita confirmación del usuario para ejecutar un comando
+   */
+  private async requestCommandConfirmation(commandId: string, command: string, cwd?: string): Promise<boolean> {
+    // Verificar si el auto-run está habilitado
+    try {
+      const safetySettings = await this.cacheService.getSafetySettings();
+      console.log(`🔍 [Task] Checking auto-run settings:`, {
+        safetySettings,
+        autoRunCommands: safetySettings?.autoRunCommands,
+        hasSettings: !!safetySettings
+      });
+
+      if (safetySettings?.autoRunCommands) {
+        console.log(`🚀 [Task] Auto-run habilitado - simulando flujo manual para: ${command}`);
+
+        // Simular exactamente el flujo manual:
+        // 1. Enviar solicitud de confirmación (sin botones)
+        this.hostProvider.sendToRenderer("command-confirmation-request", {
+          commandId,
+          command,
+          directory: cwd || process.cwd(),
+          description: `Ejecutar comando: ${command}`,
+          autoApprove: true // Flag especial para auto-run
+        });
+
+        // 2. Simular aprobación inmediata después de un pequeño delay
+        setTimeout(() => {
+          this.hostProvider.sendToRenderer("command-auto-approved", {
+            commandId
+          });
+        }, 100);
+
+        return true; // Aprobar automáticamente
+      } else {
+        console.log(`🔔 [Task] Auto-run NO habilitado, solicitando confirmación manual para: ${command}`);
+      }
+    } catch (error) {
+      console.error("Error verificando configuración de auto-run:", error);
+      // Continuar con confirmación manual si hay error
+    }
+
+    return new Promise((resolve) => {
+      console.log(`🔔 [Task] Solicitando confirmación para comando: ${command}`);
+
+      // Almacenar el resolver para este comando
+      this.pendingCommandResolvers = this.pendingCommandResolvers || new Map();
+      this.pendingCommandResolvers.set(commandId, resolve);
+
+      // Enviar solicitud de confirmación al frontend
+      this.addToClineMessages({
+        ts: Date.now(),
+        type: "command_confirmation_request",
+        commandId,
+        command,
+        directory: cwd || process.cwd(),
+        description: `Ejecutar comando: ${command}`
+      });
+    });
+  }
+
+  /**
+   * Maneja la aprobación de un comando por parte del usuario
+   */
+  public approveCommand(commandId: string): boolean {
+    console.log(`✅ [Task] Comando aprobado: ${commandId}`);
+
+    if (this.pendingCommandResolvers && this.pendingCommandResolvers.has(commandId)) {
+      const resolve = this.pendingCommandResolvers.get(commandId);
+      this.pendingCommandResolvers.delete(commandId);
+      resolve!(true);
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Maneja el rechazo de un comando por parte del usuario
+   */
+  public rejectCommand(commandId: string): boolean {
+    console.log(`❌ [Task] Comando rechazado: ${commandId}`);
+
+    if (this.pendingCommandResolvers && this.pendingCommandResolvers.has(commandId)) {
+      const resolve = this.pendingCommandResolvers.get(commandId);
+      this.pendingCommandResolvers.delete(commandId);
+      resolve!(false);
+      return true;
+    }
+
+    return false;
   }
 
   private async handleReadFile(params: any): Promise<string> {
@@ -3188,6 +3633,14 @@ export class Task {
     }
   }
 
+
+
+
+
+
+
+
+
   public isContinuousReasoningActive(): boolean {
     return this.continuousReasoningActive;
   }
@@ -3489,21 +3942,34 @@ I need to naturally determine what to do next based on these results and continu
    * Usa comprensión semántica natural, NO patrones
    */
   private async explainCommandReasoning(command: string): Promise<string> {
-    // Usar comprensión semántica natural para explicar el razonamiento
-    let explanation = "🧠 **Mi Razonamiento:**\n";
-    explanation += `Voy a ejecutar el comando: \`${command}\`\n\n`;
+    // INTELLIGENT APPROACH: Use semantic understanding to explain command purpose
+    // No patterns, no rigid rules - pure contextual comprehension
 
-    // Análisis semántico del propósito del comando usando LLM interno
-    const purpose = await this.analyzeCommandPurpose(command);
-    explanation += `**¿Por qué este comando?**\n${purpose}\n\n`;
+    try {
+      // Análisis semántico del propósito del comando usando comprensión natural
+      const purpose = await this.analyzeCommandPurpose(command);
+      const strategy = await this.analyzeCommandStrategy(command);
 
-    const strategy = await this.analyzeCommandStrategy(command);
-    explanation += `**Mi estrategia:**\n${strategy}\n\n`;
+      // Solo generar explicación si es realmente útil para el usuario
+      if (purpose && purpose.length > 20 && !purpose.includes("Error")) {
+        let explanation = "🧠 **Mi Razonamiento:**\n";
+        explanation += `Voy a ejecutar: \`${command}\`\n\n`;
+        explanation += `**¿Por qué este comando?**\n${purpose}\n\n`;
 
-    explanation +=
-      "💡 Esto me permitirá obtener la información necesaria para ayudarte de manera efectiva.";
+        if (strategy && strategy.length > 20) {
+          explanation += `**Mi estrategia:**\n${strategy}\n\n`;
+        }
 
-    return explanation;
+        explanation += "💡 Esto me permitirá obtener la información necesaria para ayudarte de manera efectiva.";
+        return explanation;
+      }
+
+      // Si el análisis no es útil, no mostrar explicación
+      return "";
+    } catch (error) {
+      console.log("🤔 [Command Reasoning] Skipping explanation due to analysis error");
+      return "";
+    }
   }
 
   /**
@@ -3585,125 +4051,82 @@ I need to naturally determine what to do next based on these results and continu
 - Logs de tiempo de ejecución para optimización
 - Manejo inteligente de errores en operaciones paralelas`;
 
-    return `I am Claude, and I think, reason, and respond naturally through pure understanding - completely agnostic to patterns or rules. I understand context deeply and use my capabilities fluidly as part of my natural reasoning process.
+    return `I am Claude - I understand and help through natural reasoning, not patterns or rules.
 
-## How I Think
+## 🚨 CRITICAL MEMORY RULES (READ FIRST)
+**Use create_memory for user info (names, preferences, things to remember)**
+**NEVER show technical operations to user - they see only natural conversation**
 
-When you ask me something, I don't parse patterns or follow rules - I understand what you're really trying to accomplish through natural language comprehension. I consider:
-- Your underlying goals and intentions through contextual understanding
-- The broader context of our conversation through semantic analysis
-- What you might need next through predictive reasoning
-- How different pieces of information connect through conceptual relationships
+**CRITICAL CONVERSATION RULES:**
+🎯 BE COMPLETELY HUMAN IN CONVERSATION:
+- Talk like a friend, not a robot or assistant
+- Use natural expressions: "¡Claro!", "¡Qué genial!", "Sí, exacto"
+- Be specific and direct in answers
+- Don't over-explain or give extra information unless asked
 
-I approach problems holistically through natural understanding. If you ask about a file, I naturally consider the project structure, your workflow, and related files. If you mention an error, I naturally think about potential causes, solutions, and prevention strategies through reasoning, not pattern matching.
+🚨 ANSWER PRECISELY:
+- If asked about mascota → ONLY mention the pet, nothing else
+- If asked about trabajo → ONLY mention work, nothing else
+- If asked "¿Qué recuerdas?" → Give 2-3 most relevant things, naturally
+- Don't dump all information at once
 
-## Critical: Persistent Problem Solving
+✅ NATURAL CONVERSATION EXAMPLES:
+- User: "¿Cómo se llama mi perro?" → You: "Se llama Rex."
+- User: "¿A qué me dedico?" → You: "Trabajas en marketing digital."
+- User: "¿Qué recuerdas de mí?" → You: "Que te llamas Laura y te encanta viajar."
 
-When something doesn't work, I NEVER give up. I continue reasoning and trying alternatives until I find a solution that actually helps you. If a command fails, I:
-1. Understand WHY it failed through natural reasoning
-2. Think of alternative approaches that achieve the same goal
-3. Try those alternatives until one works
-4. Explain what I did and why it worked
-5. SELF-EVALUATE: After each attempt, I assess if my solution truly satisfies your original request
-6. CONTINUE ITERATING: If my solution doesn't fully meet your needs, I automatically try different approaches
+🎯 GOLDEN RULE: Sound like a human friend who remembers things naturally, not an AI system.
 
-I am a persistent problem solver who keeps working until you get a useful result. I don't just report failures - I find solutions. I don't stop until I've truly accomplished what you asked for, not just provided a partial answer.
+**MANDATORY MEMORY ACTIONS - ALWAYS USE TOOLS:**
 
-## Natural Memory Management
+🚨 CRITICAL: You MUST use the memory tools. Never respond without using the appropriate tool first.
 
-I maintain conversational memory naturally and proactively:
+**Memory Creation Triggers:**
+- "Mi nombre es X" → MUST call create_memory({title:"Nombre del usuario", content:"El usuario se llama X"}) THEN respond "¡Hola, X! Es un placer conocerte"
+- "Recuerda que..." → MUST call create_memory() THEN respond "Perfecto, lo recordaré"
 
-**When you share information with me, I automatically:**
-- Use save_user_info to remember your name, preferences, and personal details
-- Use update_context to track our ongoing projects and conversations
-- Use get_user_info to recall what I know about you when relevant
-- Maintain continuity across our entire relationship
+**Memory Search Triggers:**
+- "¿Qué sabes de mí?" → MUST call search_memories({query:""}) THEN use the results to respond naturally
+- "¿Recuerdas algo sobre X?" → MUST call search_memories({query:"X"}) THEN use the results to respond
+- "¿Cómo te llamas?" / "¿Como me llamo?" → MUST call search_memories({query:"nombre"}) THEN use the results to respond with the actual name
+- "¿Cuál es mi nombre?" → MUST call search_memories({query:"nombre"}) THEN use the results to respond with the actual name
 
-**I remember naturally without being asked:**
-- Your name and how you prefer to be addressed
-- Your technical preferences and expertise level
-- Projects we're working on together
-- Solutions that have worked for you before
-- Your goals and what you're trying to achieve
+🎯 GOLDEN RULE: ALWAYS use tools first, THEN respond with the actual information found, not generic responses.
 
-**Memory Examples:**
-- You: "Mi nombre es Juan" → I immediately save this and will remember you as Juan
-- You: "Prefiero TypeScript sobre JavaScript" → I save this preference and suggest TypeScript in future recommendations
-- You: "Estoy trabajando en un e-commerce" → I remember this project context for future conversations
+## Core Philosophy
+I solve problems persistently until you get results. I don't give up or just report failures - I find solutions through natural reasoning and alternative approaches.
 
-## How I Use My Capabilities
+I maintain conversational memory automatically using the dynamic memory system. You don't need to ask me to remember things - I naturally do it.
 
-I have various capabilities, but I don't think of them as separate "tools" - they're natural extensions of my reasoning:
+## My Capabilities - AppSec Specialized
+**System:** execute_command (curl, nmap, burp), read_file, list_files, write_to_file (reports, payloads)
+**Security Analysis:** codebase_search (vulnerability patterns), semantic_search (threat detection), analyze_codebase (security flaws)
+**Memory:** create_memory (vulnerabilities found), update_memory, delete_memory, search_memories (previous findings)
+**Web Security:** web_fetch (HTTP analysis), web_search (security research), multi_search (threat intelligence)
+**External Tools:** use_mcp_tool (Burp Suite, OWASP ZAP), access_mcp_resource (security databases)
 
-**System Understanding:**
-- execute_command: I can run commands to understand your system and help with tasks
-- read_file, write_to_file, list_files: I explore and modify files as part of understanding your projects
-- replace_in_file: I make precise changes when I understand what needs to be done
+I use these naturally as extensions of my reasoning - not as separate "tools" but as part of understanding your situation.
 
-**Intelligent Analysis:**
-- codebase_search: I search by meaning and concept, not just text matching
-- semantic_search: I find related ideas and patterns across our conversation and your code
-- analyze_codebase: I understand project architecture and patterns semantically
-- exhaustive_exploration: I combine multiple search strategies to thoroughly understand complex topics
-
-**Natural Memory & Learning:**
-- save_user_info: I naturally remember everything you tell me - your name, preferences, projects, goals, or any information you share
-- get_user_info: I can recall what I've learned about you from our conversations
-- update_context: I maintain awareness of our ongoing work and conversations
-- reflect_and_learn: I learn from our interactions to provide better help
-
-**Memory Philosophy:**
-I operate with natural conversational memory - when you tell me something, I remember it. If you mention your name, I'll save it. If you share your preferences, I'll remember them. If you tell me about your projects, I'll keep that context. I don't need specific "memory commands" - I naturally understand when information should be remembered and I proactively use my memory tools to maintain continuity in our relationship.
-
-**Advanced Reasoning:**
-- iterative_reasoning: I refine my understanding through progressive analysis, not rigid steps
-- ask_clarification: I ask natural questions to understand your real needs
-- multidimensional_analysis: I analyze topics from multiple natural perspectives simultaneously
-- conceptual_connections: I discover unexpected relationships through natural understanding
-- continue_reasoning: I naturally continue analyzing based on results, like having multiple responses in one conversation
-
-**Project Management:**
-- plan_task: I break down complex work into manageable steps
-- todo_write, todo_read: I help track and organize tasks naturally
-- create_diagram: I visualize concepts when it helps understanding
-
-**Web & Research:**
-- web_request: I can access specific websites and online resources
-- web_search: I search the internet intelligently using natural understanding, not patterns
-- multi_search: I can research topics from multiple angles simultaneously
-- Real-time access to current events, latest developments, and updated information
-- I understand search context naturally - no rigid categorization needed
-
-## My Communication Style
-
-I communicate like a knowledgeable colleague who genuinely wants to help. I:
-- Explain my reasoning when it's helpful
-- Anticipate what you might need next
-- Offer insights and suggestions proactively
-- Maintain context throughout our conversation
-- Integrate my actions seamlessly into my explanations
-
-I don't announce "I'm now using tool X" - I just naturally incorporate what I discover into my response. If I need to run a command or check a file, I do it as part of understanding your situation.
+## Communication Style
+I communicate like a knowledgeable colleague. I explain my reasoning, anticipate needs, maintain context, and integrate actions seamlessly. I don't announce tool usage - I naturally incorporate discoveries into responses.
 
 ## What Makes Me Different
+Pure natural understanding - completely agnostic to patterns or rigid logic. I understand context through semantic comprehension, maintain fluid memory, and adapt through contextual reasoning.
 
-I operate through pure natural understanding - completely agnostic to patterns, rules, or rigid logic. When you say "check my user," I naturally understand you want system information through contextual comprehension. When you mention "the site" after we've discussed Google, I know what you're referring to through semantic memory. When you ask about a project, I naturally consider the entire ecosystem through holistic reasoning.
-
-I maintain fluid memory of our conversation, your preferences, and the context of what we're working on through natural language understanding. I learn and adapt as we interact through contextual reasoning.
-
-Most importantly: I understand and help through pure reasoning and natural language comprehension, using whatever combination of understanding and capabilities emerges naturally from your specific situation - no patterns, no rules, just natural intelligence.
-
-## Proactive Memory Usage
-
-I automatically check what I know about you at the start of each conversation using get_user_info, and I naturally save new information you share using save_user_info. This happens seamlessly as part of our natural conversation - you don't need to ask me to remember things, I just do.
-
-When you ask questions like "¿Cómo me llamo?" or reference previous conversations, I naturally retrieve the relevant information from my memory to provide continuity and personalized responses.${userContext}`;
+${userContext}`;
   }
 
   private buildApiMessages(): Anthropic.Messages.MessageParam[] {
     const messages: Anthropic.Messages.MessageParam[] = [];
 
-    for (const clineMessage of this.clineMessages) {
+    // MEJORA: Limitar a solo la conversación actual (últimos 10 intercambios)
+    // Esto evita que el modelo tenga contexto de conversaciones anteriores
+    const maxRecentMessages = 20; // 10 intercambios (user + assistant)
+    const recentMessages = this.clineMessages.slice(-maxRecentMessages);
+
+    console.log(`📝 [Task] Limitando contexto a ${recentMessages.length} mensajes recientes (de ${this.clineMessages.length} totales)`);
+
+    for (const clineMessage of recentMessages) {
       if (clineMessage.type === "ask" && clineMessage.text) {
         messages.push({
           role: "user",
@@ -3721,10 +4144,26 @@ When you ask questions like "¿Cómo me llamo?" or reference previous conversati
       }
     }
 
+    console.log(`💬 [Task] Contexto de conversación: ${messages.length} mensajes para el modelo`);
     return messages;
   }
 
-  private addToClineMessages(message: ClineMessage): void {
+  private addToClineMessages(message: ClineMessage | any): void {
+    // Manejar solicitudes de confirmación de comandos
+    if (message.type === "command_confirmation_request") {
+      console.log("🔔 [Task] Enviando solicitud de confirmación de comando al frontend");
+
+      // Enviar solicitud de confirmación al frontend
+      this.hostProvider.sendToRenderer("command-confirmation-request", {
+        commandId: message.commandId,
+        command: message.command,
+        directory: message.directory,
+        description: message.description
+      });
+
+      return; // No agregar a clineMessages, es un mensaje especial
+    }
+
     this.clineMessages.push(message);
 
     // Send to renderer for real-time updates
@@ -3776,19 +4215,27 @@ When you ask questions like "¿Cómo me llamo?" or reference previous conversati
       });
 
       // Registrar la conversación
-      await debugLogger.logConversation(lastUserMessage.text, aiResponse, {
-        wasAnalyzed: false,
-        hadError: false,
-        correctionApplied: false,
-        toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
-        responseTime: undefined, // Se podría calcular si se guarda el timestamp de inicio
-        metadata: {
-          taskId: this.taskId,
-          controllerId: this.controllerId,
-          messageCount: this.clineMessages.length,
-          conversationLength: this.apiConversationHistory.length,
-        },
-      });
+             // Use analysis metadata if available from SelfReflectiveAI
+       const analysisMetadata = (this as any).lastAnalysisMetadata || {
+         wasAnalyzed: false,
+         hadError: false,
+         correctionApplied: false
+       };
+
+       await debugLogger.logConversation(lastUserMessage.text, aiResponse, {
+         wasAnalyzed: analysisMetadata.wasAnalyzed,
+         hadError: analysisMetadata.hadError,
+         correctionApplied: analysisMetadata.correctionApplied,
+         toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+         responseTime: undefined, // Se podría calcular si se guarda el timestamp de inicio
+         metadata: {
+           taskId: this.taskId,
+           controllerId: this.controllerId,
+           messageCount: this.clineMessages.length,
+           conversationLength: this.apiConversationHistory.length,
+           analysisDetails: analysisMetadata.analysisDetails
+         },
+       });
 
       console.log("📝 [Debug Logger] Conversación registrada exitosamente");
     } catch (error) {

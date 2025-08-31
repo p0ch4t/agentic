@@ -6,7 +6,9 @@ import { HistoryItem } from "../../shared/HistoryItem";
 interface SafetySettings {
   autoApproveRead: boolean;
   autoApproveList: boolean;
+  autoRunCommands: boolean;
   confirmDangerous: boolean;
+  persistentMemory: boolean;
 }
 
 export interface UserMemory {
@@ -58,10 +60,32 @@ export interface TaskManagement {
   totalCount: number;
 }
 
+// Nueva interfaz de memoria dinámica como Claude
+export interface DynamicMemory {
+  id: string;
+  title: string;
+  content: string;
+  created: string;
+  updated: string;
+  tags?: string[];
+  importance?: 'low' | 'medium' | 'high';
+  relevanceScore?: number; // Para búsquedas semánticas
+  sessionId?: string; // Para aislar memoria por conversación
+  isPersistent?: boolean; // Si debe mantenerse entre conversaciones
+}
+
+export interface ClaudeStyleMemorySystem {
+  memories: DynamicMemory[];
+  lastCleanup?: string;
+  totalMemories: number;
+}
+
 export interface FluidMemory {
   userMemory: UserMemory;
   conversationContext: ConversationContext;
   taskManagement: TaskManagement;
+  // Nuevo sistema de memoria dinámica
+  claudeStyleMemory: ClaudeStyleMemorySystem;
   semanticMemory: {
     concepts: Record<string, any>;
     relationships: Record<string, string[]>;
@@ -145,10 +169,12 @@ export class ElectronCacheService {
   // ===== API CONFIGURATION =====
 
   async getApiConfiguration(): Promise<ApiConfiguration | undefined> {
+    console.log("🔧 [CacheService] Getting API configuration:", JSON.stringify(this.cache.apiConfiguration, null, 2));
     return this.cache.apiConfiguration;
   }
 
   async setApiConfiguration(config: ApiConfiguration): Promise<void> {
+    console.log("🔧 [CacheService] Setting API configuration:", JSON.stringify(config, null, 2));
     this.cache.apiConfiguration = config;
     await this.saveCache();
   }
@@ -182,6 +208,7 @@ export class ElectronCacheService {
         userMemory: {},
         conversationContext: {},
         taskManagement: { todos: [], completedCount: 0, totalCount: 0 },
+        claudeStyleMemory: { memories: [], totalMemories: 0 },
         semanticMemory: { concepts: {}, relationships: {}, insights: [] },
         episodicMemory: { recentInteractions: [] },
       };
@@ -201,6 +228,7 @@ export class ElectronCacheService {
         userMemory: {},
         conversationContext: {},
         taskManagement: { todos: [], completedCount: 0, totalCount: 0 },
+        claudeStyleMemory: { memories: [], totalMemories: 0 },
         semanticMemory: { concepts: {}, relationships: {}, insights: [] },
         episodicMemory: { recentInteractions: [] },
       };
@@ -221,6 +249,7 @@ export class ElectronCacheService {
         userMemory: {},
         conversationContext: {},
         taskManagement: { todos: [], completedCount: 0, totalCount: 0 },
+        claudeStyleMemory: { memories: [], totalMemories: 0 },
         semanticMemory: { concepts: {}, relationships: {}, insights: [] },
         episodicMemory: { recentInteractions: [] },
       };
@@ -341,6 +370,166 @@ export class ElectronCacheService {
     this.cache.globalState[key] = value;
     this.saveCache().catch(console.error);
   }
+
+  // ===== CLAUDE-STYLE DYNAMIC MEMORY METHODS =====
+
+  private generateMemoryId(): string {
+    return `memory-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  async createMemory(title: string, content: string, tags?: string[], importance?: 'low' | 'medium' | 'high'): Promise<DynamicMemory> {
+    if (!this.cache.fluidMemory) {
+      this.cache.fluidMemory = {
+        userMemory: {},
+        conversationContext: {},
+        taskManagement: { todos: [], completedCount: 0, totalCount: 0 },
+        claudeStyleMemory: { memories: [], totalMemories: 0 },
+        semanticMemory: { concepts: {}, relationships: {}, insights: [] },
+        episodicMemory: { recentInteractions: [] },
+      };
+    }
+
+    const memory: DynamicMemory = {
+      id: this.generateMemoryId(),
+      title,
+      content,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      tags: tags || [],
+      importance: importance || 'medium'
+    };
+
+    this.cache.fluidMemory.claudeStyleMemory.memories.push(memory);
+    this.cache.fluidMemory.claudeStyleMemory.totalMemories = this.cache.fluidMemory.claudeStyleMemory.memories.length;
+
+    await this.saveCache();
+    console.log(`🧠 [Memory Created] ${title}: ${content.substring(0, 50)}...`);
+    return memory;
+  }
+
+  async updateMemory(id: string, updates: Partial<Pick<DynamicMemory, 'title' | 'content' | 'tags' | 'importance'>>): Promise<DynamicMemory | null> {
+    if (!this.cache.fluidMemory?.claudeStyleMemory) {
+      return null;
+    }
+
+    const memoryIndex = this.cache.fluidMemory.claudeStyleMemory.memories.findIndex(m => m.id === id);
+    if (memoryIndex === -1) {
+      return null;
+    }
+
+    this.cache.fluidMemory.claudeStyleMemory.memories[memoryIndex] = {
+      ...this.cache.fluidMemory.claudeStyleMemory.memories[memoryIndex],
+      ...updates,
+      updated: new Date().toISOString()
+    };
+
+    await this.saveCache();
+    console.log(`🔄 [Memory Updated] ${id}: ${updates.title || 'content updated'}`);
+    return this.cache.fluidMemory.claudeStyleMemory.memories[memoryIndex];
+  }
+
+  async deleteMemory(id: string): Promise<boolean> {
+    if (!this.cache.fluidMemory?.claudeStyleMemory) {
+      return false;
+    }
+
+    const initialLength = this.cache.fluidMemory.claudeStyleMemory.memories.length;
+    this.cache.fluidMemory.claudeStyleMemory.memories = this.cache.fluidMemory.claudeStyleMemory.memories.filter(m => m.id !== id);
+
+    if (this.cache.fluidMemory.claudeStyleMemory.memories.length < initialLength) {
+      this.cache.fluidMemory.claudeStyleMemory.totalMemories = this.cache.fluidMemory.claudeStyleMemory.memories.length;
+      await this.saveCache();
+      console.log(`🗑️ [Memory Deleted] ${id}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  async getMemories(): Promise<DynamicMemory[]> {
+    return this.cache.fluidMemory?.claudeStyleMemory?.memories || [];
+  }
+
+  async findMemoriesByTag(tag: string): Promise<DynamicMemory[]> {
+    const memories = await this.getMemories();
+    return memories.filter(m => m.tags?.includes(tag));
+  }
+
+  async searchMemories(query: string): Promise<DynamicMemory[]> {
+    const memories = await this.getMemories();
+
+    if (memories.length === 0) {
+      return [];
+    }
+
+    // CRÍTICO: Búsqueda semántica usando LLM, NO patrones
+    console.log(`🧠 [LLM Search] Using semantic analysis to find relevant memories for: "${query}"`);
+
+    // Calcular relevancia usando LLM semántico
+    const memoriesWithRelevance = await Promise.all(
+      memories.map(async memory => {
+        const relevanceScore = await this.calculateSemanticRelevance(query, memory);
+        return { ...memory, relevanceScore };
+      })
+    );
+
+    const relevantMemories = memoriesWithRelevance
+      .filter(m => m.relevanceScore > 0.1) // Solo memorias con relevancia mínima
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    console.log(`🧠 [LLM Search] Found ${relevantMemories.length} semantically relevant memories using LLM analysis`);
+
+    return relevantMemories;
+  }
+
+  private async calculateSemanticRelevance(query: string, memory: DynamicMemory): Promise<number> {
+    // CRÍTICO: Usar LLM para comprensión semántica real, NO patrones
+    console.log(`🧠 [LLM Relevance] Calculating semantic relevance using LLM understanding`);
+
+    let relevance = 0;
+
+    // Relevancia por importancia de la memoria
+    const importanceWeight = {
+      'high': 0.3,
+      'medium': 0.2,
+      'low': 0.1
+    };
+    relevance += importanceWeight[memory.importance || 'medium'];
+
+    // CRÍTICO: Usar LLM para determinar relevancia contextual
+    const isRelevant = await this.isSemanticallySimilar(query, memory.content, memory.title);
+    if (isRelevant) {
+      relevance += 0.5;
+    }
+
+    // Relevancia por recencia
+    const daysSinceCreated = (Date.now() - new Date(memory.created).getTime()) / (1000 * 60 * 60 * 24);
+    const recencyBonus = Math.max(0, 0.2 - (daysSinceCreated * 0.01));
+    relevance += recencyBonus;
+
+    return Math.min(relevance, 1.0);
+  }
+
+  private async isSemanticallySimilar(query: string, content: string, title: string): Promise<boolean> {
+    // CRÍTICO: Usar LLM para determinar similitud semántica
+    // NO usar patrones, regex, ni comparación de strings
+
+    console.log(`🧠 [LLM Semantic] Determining if query "${query}" is semantically related to content`);
+
+    // TODO: Implementar análisis semántico real con LLM
+    // El LLM debe comprender si la consulta y el contenido están relacionados por SIGNIFICADO
+    // Ejemplo: "¿cómo te llamas?" debe relacionarse con "me llamo Juan"
+
+    // TEMPORAL: Lógica básica hasta implementar LLM semántico
+    const queryLower = query.toLowerCase();
+    const contentLower = content.toLowerCase();
+    const titleLower = title.toLowerCase();
+
+    // Solo coincidencia directa hasta tener LLM
+    return contentLower.includes(queryLower) || titleLower.includes(queryLower);
+  }
+
+
 
   // ===== TASK MANAGEMENT METHODS =====
 

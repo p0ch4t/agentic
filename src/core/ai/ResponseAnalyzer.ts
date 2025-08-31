@@ -109,36 +109,28 @@ export class IntelligentResponseAnalyzer {
     originalRequest: string,
     toolResults?: any[],
   ): string {
-    return `Como AI, necesito analizar mi propia respuesta para detectar errores y problemas.
+    return `Analyze my response for errors and quality.
 
-**SOLICITUD ORIGINAL DEL USUARIO:**
-${originalRequest}
+**User asked:** ${originalRequest}
+**I responded:** ${response}
+${toolResults ? `**Tool results:** ${JSON.stringify(toolResults, null, 2)}` : ""}
 
-**MI RESPUESTA:**
-${response}
+**Analysis needed:**
+- Does my response have obvious errors?
+- Did I actually answer what the user asked?
+- Are there technical error messages indicating failures?
+- Is the response helpful or does it need correction?
 
-${toolResults ? `**RESULTADOS DE HERRAMIENTAS:**\n${JSON.stringify(toolResults, null, 2)}` : ""}
-
-**ANÁLISIS REQUERIDO:**
-Por favor, analiza mi respuesta y determina:
-
-1. ¿Hay algún error evidente en mi respuesta?
-2. ¿La respuesta realmente responde a lo que pidió el usuario?
-3. ¿Hay mensajes de error técnicos que indiquen fallas?
-4. ¿La respuesta es útil o necesita corrección?
-5. ¿Puedo proporcionar una mejor respuesta automáticamente?
-
-**FORMATO DE RESPUESTA:**
-Responde SOLO con un JSON válido en este formato:
+**Respond with JSON only:**
 {
   "hasError": boolean,
-  "errorDescription": "descripción del error si existe",
+  "errorDescription": "error description if any",
   "errorSeverity": "low|medium|high|critical",
-  "confidence": número entre 0 y 1,
+  "confidence": 0.0-1.0,
   "needsCorrection": boolean,
-  "suggestedCorrection": "texto de corrección si es necesario",
+  "suggestedCorrection": "correction text if needed",
   "canAutoFix": boolean,
-  "userImpact": "descripción del impacto en el usuario"
+  "userImpact": "impact description"
 }`;
   }
 

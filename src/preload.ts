@@ -24,6 +24,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("reject-tool", toolCallId),
   getPendingTools: () => ipcRenderer.invoke("get-pending-tools"),
 
+  // Gestión de comandos
+  approveCommand: (commandId: string) =>
+    ipcRenderer.invoke("approve-command", commandId),
+  rejectCommand: (commandId: string) =>
+    ipcRenderer.invoke("reject-command", commandId),
+
   // Configuración de IA
   updateAIConfig: (config: any) =>
     ipcRenderer.invoke("update-ai-config", config),
@@ -36,6 +42,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Mensajes del sistema
   showMessage: (options: any) => ipcRenderer.invoke("show-message", options),
 
+  // Debug logging
+  sendLogToMain: (message: string) => ipcRenderer.invoke("log-from-renderer", message),
+
+  // Generic invoke method for other IPC calls
+  invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
+
   // Eventos del sistema
   onTaskUpdate: (callback: (data: any) => void) => {
     ipcRenderer.on("task-update", (event, data) => callback(data));
@@ -43,6 +55,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   onToolRequest: (callback: (tool: any) => void) => {
     ipcRenderer.on("tool-request", (event, tool) => callback(tool));
+  },
+
+  onStateUpdate: (callback: (state: any) => void) => {
+    ipcRenderer.on("state-update", (event, state) => callback(state));
   },
 
   onTaskComplete: (callback: (result: any) => void) => {
@@ -65,6 +81,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   onClineMessage: (callback: (message: any) => void) => {
     ipcRenderer.on("cline-message", (event, message) => callback(message));
+  },
+
+  // Command Confirmation Events
+  onCommandConfirmationRequest: (callback: (commandData: any) => void) => {
+    ipcRenderer.on("command-confirmation-request", (event, commandData) => callback(commandData));
+  },
+  onCommandAutoApproved: (callback: (data: any) => void) => {
+    ipcRenderer.on("command-auto-approved", (event, data) => callback(data));
   },
 
   // Limpiar listeners
@@ -92,6 +116,10 @@ declare global {
       rejectTool: (toolCallId: string) => Promise<any>;
       getPendingTools: () => Promise<any>;
 
+      // Command Management APIs
+      approveCommand: (commandId: string) => Promise<any>;
+      rejectCommand: (commandId: string) => Promise<any>;
+
       // AI Configuration APIs
       updateAIConfig: (config: any) => Promise<any>;
       getAIConfig: () => Promise<any>;
@@ -106,12 +134,16 @@ declare global {
       // Event Listeners
       onTaskUpdate: (callback: (data: any) => void) => void;
       onToolRequest: (callback: (tool: any) => void) => void;
+      onStateUpdate: (callback: (state: any) => void) => void;
       onTaskComplete: (callback: (result: any) => void) => void;
       onAIResponse: (callback: (response: any) => void) => void;
       onToolCallRequest: (callback: (toolCall: any) => void) => void;
       onCommandOutput: (callback: (data: any) => void) => void;
       onClineMessage: (callback: (message: any) => void) => void;
+      onCommandConfirmationRequest: (callback: (commandData: any) => void) => void;
       removeAllListeners: (channel: string) => void;
+      sendLogToMain: (message: string) => Promise<boolean>;
+      invoke: (channel: string, ...args: any[]) => Promise<any>;
     };
   }
 }

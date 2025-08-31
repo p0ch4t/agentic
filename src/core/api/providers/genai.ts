@@ -20,9 +20,18 @@ export class GenAiHandler implements ApiHandler {
 
   async *createMessage(systemPrompt: string, messages: any[]): ApiStream {
     console.log("🌐 [GenAiHandler] Starting createMessage");
+    console.log("🔧 [GenAiHandler] Full options received:", JSON.stringify(this.options, null, 2));
     console.log(
       "🔑 [GenAiHandler] API Key present:",
       !!this.options.genAiApiKey,
+    );
+    console.log(
+      "🌐 [GenAiHandler] Base URL present:",
+      !!this.options.genAiBaseUrl,
+    );
+    console.log(
+      "🌐 [GenAiHandler] Base URL value:",
+      this.options.genAiBaseUrl,
     );
 
     // API key is optional for custom models (o3 Custom)
@@ -34,6 +43,7 @@ export class GenAiHandler implements ApiHandler {
 
     if (!this.options.genAiBaseUrl) {
       console.error("❌ [GenAiHandler] GenAI base URL is required");
+      console.error("❌ [GenAiHandler] Available options:", Object.keys(this.options));
       throw new Error("GenAI base URL is required");
     }
 
@@ -318,24 +328,24 @@ export class GenAiHandler implements ApiHandler {
   }
 
   private getAvailableTools() {
-    console.log("🔧 [GenAiHandler] Getting available tools");
+    console.log("🔧 [GenAiHandler] Getting AppSec specialized tools");
 
     const tools = [
       {
         type: "function",
         function: {
           name: "execute_command",
-          description: "Execute a shell command on the system",
+          description: "Run security commands (curl, nmap, nikto, sqlmap, burpsuite, etc.) for penetration testing and vulnerability assessment",
           parameters: {
             type: "object",
             properties: {
               command: {
                 type: "string",
-                description: "The command to execute",
+                description: "Command to run",
               },
               cwd: {
                 type: "string",
-                description: "Working directory for the command (optional)",
+                description: "Working directory (optional)",
               },
             },
             required: ["command", "cwd"],
@@ -346,13 +356,13 @@ export class GenAiHandler implements ApiHandler {
         type: "function",
         function: {
           name: "read_file",
-          description: "Read the contents of a file",
+          description: "Read source code files to analyze for security vulnerabilities, configuration files, and application structure",
           parameters: {
             type: "object",
             properties: {
               path: {
                 type: "string",
-                description: "Path to the file to read",
+                description: "File path",
               },
             },
             required: ["path"],
@@ -363,17 +373,17 @@ export class GenAiHandler implements ApiHandler {
         type: "function",
         function: {
           name: "write_file",
-          description: "Write content to a file",
+          description: "Create security reports, proof-of-concept exploits, payloads, and vulnerability documentation. For findings use create_memory instead.",
           parameters: {
             type: "object",
             properties: {
               path: {
                 type: "string",
-                description: "Path to the file to write",
+                description: "File path",
               },
               content: {
                 type: "string",
-                description: "Content to write to the file",
+                description: "File content",
               },
             },
             required: ["path", "content"],
@@ -384,7 +394,7 @@ export class GenAiHandler implements ApiHandler {
         type: "function",
         function: {
           name: "list_files",
-          description: "List files in a directory",
+          description: "Explore application structure to identify attack surface, configuration files, and potential entry points",
           parameters: {
             type: "object",
             properties: {
@@ -394,6 +404,90 @@ export class GenAiHandler implements ApiHandler {
               },
             },
             required: ["path"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "create_memory",
+          description: "Store security findings, vulnerabilities discovered, attack vectors identified, and penetration testing results for future reference.",
+          parameters: {
+            type: "object",
+            properties: {
+              title: {
+                type: "string",
+                description: "Descriptive title for the memory",
+              },
+              content: {
+                type: "string",
+                description: "The information to remember",
+              },
+            },
+            required: ["title", "content"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "search_memories",
+          description: "Search previous security findings and vulnerability assessments. Use empty query for recent findings (max 5). Use specific query to search for particular vulnerabilities or attack patterns.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Search query for memory content. Empty string returns most relevant memories (max 5), specific query searches for that topic.",
+              },
+            },
+            required: ["query"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "search_files",
+          description: "Search for security vulnerabilities, sensitive data patterns, and configuration issues across the codebase using semantic analysis",
+          parameters: {
+            type: "object",
+            properties: {
+              file_pattern: {
+                type: "string",
+                description: "File pattern to search (e.g., '*.js', '*.php', '*.config')",
+              },
+              regex: {
+                type: "string",
+                description: "Search pattern for vulnerability detection",
+              },
+              path: {
+                type: "string",
+                description: "Directory path to search in",
+              },
+            },
+            required: ["file_pattern", "regex", "path"],
+          },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "web_fetch",
+          description: "Perform HTTP requests to analyze web application security, test endpoints, and examine server responses for vulnerabilities",
+          parameters: {
+            type: "object",
+            properties: {
+              url: {
+                type: "string",
+                description: "Target URL for security testing",
+              },
+              action: {
+                type: "string",
+                description: "HTTP method (GET, POST, PUT, DELETE) or security action (headers, cookies, forms)",
+              },
+            },
+            required: ["url", "action"],
           },
         },
       },

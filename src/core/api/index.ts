@@ -53,6 +53,14 @@ export function buildApiHandler(
       });
 
     case "genai":
+      console.log("🔧 [buildApiHandler] Creating GenAI handler with config:", {
+        genAiApiKey: !!configuration.genAiApiKey,
+        genAiBaseUrl: configuration.genAiBaseUrl,
+        authHeader: configuration.authHeader,
+        apiModelId: configuration.actModeApiModelId,
+        temperature: configuration.temperature,
+        maxTokens: configuration.maxTokens,
+      });
       return new GenAiHandler({
         genAiApiKey: configuration.genAiApiKey,
         genAiBaseUrl: configuration.genAiBaseUrl,

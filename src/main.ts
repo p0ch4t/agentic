@@ -76,6 +76,7 @@ class Main {
     ipcMain.removeAllListeners("update-ai-config");
     ipcMain.removeAllListeners("get-ai-config");
     ipcMain.removeAllListeners("is-ai-processing");
+    ipcMain.removeAllListeners("log-from-renderer");
 
     // Handler para mensajes del webview
     ipcMain.handle("webview-message", async (event, message) => {
@@ -230,6 +231,38 @@ class Main {
       }
     });
 
+    // Handler para aprobar comando
+    ipcMain.handle("approve-command", async (event, commandId: string) => {
+      try {
+        console.log(`✅ [Main] Approving command: ${commandId}`);
+        const result = await this.controller?.handleWebviewMessage({
+          type: "approveCommand",
+          commandId: commandId,
+        });
+        console.log(`✅ [Main] Command approval result:`, result);
+        return result;
+      } catch (error) {
+        console.error("❌ [Main] Error approving command:", error);
+        throw error;
+      }
+    });
+
+    // Handler para rechazar comando
+    ipcMain.handle("reject-command", async (event, commandId: string) => {
+      try {
+        console.log(`❌ [Main] Rejecting command: ${commandId}`);
+        const result = await this.controller?.handleWebviewMessage({
+          type: "rejectCommand",
+          commandId: commandId,
+        });
+        console.log(`✅ [Main] Command rejection result:`, result);
+        return result;
+      } catch (error) {
+        console.error("❌ [Main] Error rejecting command:", error);
+        throw error;
+      }
+    });
+
     // Handler para obtener herramientas pendientes
     ipcMain.handle("get-pending-tools", async (event) => {
       try {
@@ -255,7 +288,9 @@ class Main {
     // Handler para limpiar conversación
     ipcMain.handle("clear-conversation", async (event) => {
       try {
+        // Limpiar tarea y memoria manualmente (independiente de configuración)
         await this.controller?.clearTask();
+        await this.controller?.clearMemoryManually();
         return { success: true };
       } catch (error) {
         console.error("Error clearing conversation:", error);
@@ -301,7 +336,7 @@ class Main {
     // Handler para obtener configuración de IA
     ipcMain.handle("get-ai-config", async (event) => {
       try {
-        return await this.controller?.getApiConfiguration();
+        return await this.controller?.getFullConfiguration();
       } catch (error) {
         console.error("Error getting AI config:", error);
         throw error;
@@ -316,6 +351,12 @@ class Main {
         console.error("Error checking AI processing status:", error);
         throw error;
       }
+    });
+
+    // Handler para logs del renderer
+    ipcMain.handle("log-from-renderer", async (event, message) => {
+      console.log(message);
+      return true;
     });
   }
 

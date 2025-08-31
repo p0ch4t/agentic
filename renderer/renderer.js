@@ -4,6 +4,7 @@ class ClineAIRenderer {
     this.conversationHistory = [];
     this.isAIProcessing = false;
     this.currentToolCall = null;
+    this.pendingCommands = new Map(); // Para almacenar comandos pendientes de confirmación
     this.settings = {
       model: "claude-3-sonnet-20240229",
       apiKey: "",
@@ -16,6 +17,19 @@ class ClineAIRenderer {
       confirmDangerous: true,
     };
     this.init();
+  }
+
+  // Método seguro para enviar logs al proceso principal
+  async safeLogToMain(message) {
+    try {
+      if (window.electronAPI && window.electronAPI.sendLogToMain) {
+        await window.electronAPI.sendLogToMain(message);
+      }
+    } catch (error) {
+      // Silenciosamente ignorar errores de logging para evitar bucles de error
+      // No usar console.error para evitar que se muestre como "unexpected error"
+      // console.log("Log to main skipped:", message);
+    }
   }
 
   init() {
@@ -118,8 +132,10 @@ class ClineAIRenderer {
   }
 
   setupEventListeners() {
+    console.log("🔧 [Renderer] Setting up event listeners");
     // Listen for events from main process
     if (window.electronAPI) {
+      console.log("✅ [Renderer] electronAPI is available");
       window.electronAPI.onAIResponse((response) =>
         this.handleAIResponse(response),
       );
@@ -129,6 +145,19 @@ class ClineAIRenderer {
       window.electronAPI.onClineMessage((message) =>
         this.handleClineMessage(message),
       );
+      window.electronAPI.onCommandConfirmationRequest((commandData) =>
+        this.handleCommandConfirmationRequest(commandData),
+      );
+      window.electronAPI.onCommandAutoApproved((data) =>
+        this.handleCommandAutoApproved(data),
+      );
+      window.electronAPI.onStateUpdate((state) => {
+        console.log("🔄 [Renderer] State update listener triggered");
+        this.handleStateUpdate(state);
+      });
+      console.log("✅ [Renderer] State update listener registered");
+    } else {
+      console.error("❌ [Renderer] electronAPI not available");
     }
   }
 
@@ -347,13 +376,258 @@ class ClineAIRenderer {
     if (this.isAIProcessing) {
       statusDot.className = "status-dot processing";
       statusText.textContent = "Processing...";
-    } else if (this.settings.apiKey) {
+    } else if (this.hasValidApiKey()) {
       statusDot.className = "status-dot online";
       statusText.textContent = "Ready";
     } else {
       statusDot.className = "status-dot offline";
       statusText.textContent = "Configure API Key";
     }
+  }
+
+  hasValidApiKey() {
+    // Log para debug
+    this.safeLogToMain("🔍 [Renderer] Checking hasValidApiKey...");
+    this.safeLogToMain(`🔍 [Renderer] currentState exists: ${!!this.currentState}`);
+
+    if (this.currentState && this.currentState.apiConfiguration) {
+      const config = this.currentState.apiConfiguration;
+      this.safeLogToMain(`🔍 [Renderer] Config:`, JSON.stringify(config, null, 2));
+
+      const provider = config.provider;
+      const model = config.model;
+      const apiKey = config.apiKey;
+
+      this.safeLogToMain(`🔍 [Renderer] Provider: ${provider}`);
+      this.safeLogToMain(`🔍 [Renderer] Model: ${model}`);
+      this.safeLogToMain(`🔍 [Renderer] ApiKey: "${apiKey || ''}"`);
+
+      // Verificar si hay alguna API key configurada según el proveedor
+      let hasKey = false;
+      switch (provider) {
+        case "genai":
+          // Para GenAI, verificar si es un modelo custom (como o3)
+          if (model === "o3" || model === "custom") {
+            // Para modelos custom, verificar que haya al menos una baseUrl configurada
+            // Si no hay baseUrl, probablemente es solo la configuración por defecto
+            const hasBaseUrl = config.baseUrl && config.baseUrl.trim() !== "";
+            hasKey = hasBaseUrl;
+            this.safeLogToMain(`🔍 [Renderer] GenAI custom model (${model}) - baseUrl configured: ${hasBaseUrl}`);
+          } else {
+            hasKey = apiKey && apiKey.trim() !== "";
+            this.safeLogToMain(`🔍 [Renderer] GenAI standard model - API key required: ${hasKey}`);
+          }
+          break;
+        case "anthropic":
+          hasKey = apiKey && apiKey.trim() !== "";
+          break;
+        case "openai-native":
+        case "openai":
+          hasKey = apiKey && apiKey.trim() !== "";
+          break;
+        case "gemini":
+          hasKey = apiKey && apiKey.trim() !== "";
+          break;
+        case "ollama":
+        case "lm-studio":
+          hasKey = true; // Estos proveedores pueden no requerir API key
+          break;
+        default:
+          // Para proveedores desconocidos, verificar si hay API key
+          hasKey = apiKey && apiKey.trim() !== "";
+          break;
+      }
+
+      this.safeLogToMain(`🔍 [Renderer] hasValidApiKey result: ${hasKey}`);
+      return hasKey;
+    }
+
+    // Fallback a settings locales (para compatibilidad)
+    const fallbackResult = this.settings.apiKey && this.settings.apiKey.trim() !== "";
+    this.safeLogToMain(`🔍 [Renderer] Using fallback, result: ${fallbackResult}`);
+    return fallbackResult;
+  }
+
+  handleStateUpdate(state) {
+    console.log("🔄 [Renderer] Received state update:", state);
+
+    // También enviar al proceso principal para que aparezca en los logs del terminal
+    this.safeLogToMain("🔄 [Renderer] Received state update: " + JSON.stringify(state, null, 2));
+    this.safeLogToMain("🔧 [Renderer] About to update AI status...");
+
+    this.currentState = state;
+
+    // Actualizar el estado de la UI cuando recibimos nueva configuración
+    this.updateAIStatus();
+
+    // Log del resultado
+    const statusText = document.getElementById("aiStatusText")?.textContent || "unknown";
+    const statusClass = document.getElementById("aiStatus")?.className || "unknown";
+    this.safeLogToMain(`✅ [Renderer] AI status updated: "${statusText}" (${statusClass})`);
+
+    // Si hay configuración de API, actualizar los settings locales también
+    if (state.apiConfiguration) {
+      this.updateSettingsFromApiConfiguration(state.apiConfiguration);
+    }
+  }
+
+  updateSettingsFromApiConfiguration(apiConfig) {
+    // Actualizar settings locales basados en la configuración de la API
+    const provider = apiConfig.planModeApiProvider || "anthropic";
+
+    if (provider === "genai" && apiConfig.genAiApiKey) {
+      this.settings.apiKey = apiConfig.genAiApiKey;
+      this.settings.provider = "genai";
+    } else if (provider === "anthropic" && apiConfig.apiKey) {
+      this.settings.apiKey = apiConfig.apiKey;
+      this.settings.provider = "anthropic";
+    } else if (provider === "openai-native" && apiConfig.openAiNativeApiKey) {
+      this.settings.apiKey = apiConfig.openAiNativeApiKey;
+      this.settings.provider = "openai-native";
+    }
+
+    if (apiConfig.temperature !== undefined) {
+      this.settings.temperature = apiConfig.temperature;
+    }
+    if (apiConfig.maxTokens !== undefined) {
+      this.settings.maxTokens = apiConfig.maxTokens;
+    }
+
+    console.log("🔧 [Renderer] Settings updated from API configuration");
+  }
+
+  // ===== COMMAND CONFIRMATION =====
+
+  /**
+   * Muestra un comando en el chat esperando confirmación del usuario
+   */
+  showCommandConfirmation(commandId, command, directory, description, autoApprove = false) {
+    const chatMessages = document.getElementById("chatMessages");
+    const messageDiv = document.createElement("div");
+
+    messageDiv.className = "message command-confirmation";
+    messageDiv.setAttribute("data-command-id", commandId);
+
+    const timestamp = new Date().toLocaleTimeString();
+
+    // En auto-run no mostrar botones de confirmación
+    const buttonsHtml = autoApprove ? '' : `
+      <div class="command-confirmation-overlay">
+        <button class="confirmation-btn approve" onclick="window.clineAI.approveCommand('${commandId}')" title="Ejecutar comando">
+          ✓
+        </button>
+        <button class="confirmation-btn reject" onclick="window.clineAI.rejectCommand('${commandId}')" title="Cancelar comando">
+          ✕
+        </button>
+      </div>
+    `;
+
+    const content = `
+      ${buttonsHtml}
+      <div class="message-avatar ai-avatar">🤖</div>
+      <div class="message-content">
+        <div class="message-header">
+          <span class="message-sender">AI Assistant</span>
+          <span class="message-time">${timestamp}</span>
+        </div>
+        <div class="message-text">
+          ⚡ Comando a ejecutar<br>
+          📁 ${this.escapeHtml(directory || process.cwd())}<br>
+          <div class="command-code">${this.escapeHtml(command)}</div>
+          <div class="command-waiting">
+            <div class="waiting-spinner"></div>
+            ⏳ Esperando confirmación...
+          </div>
+        </div>
+      </div>
+    `;
+
+    messageDiv.innerHTML = content;
+    chatMessages.appendChild(messageDiv);
+    this.scrollToBottom();
+
+    return messageDiv;
+  }
+
+  /**
+   * Aprueba la ejecución de un comando
+   */
+  async approveCommand(commandId) {
+    console.log(`✅ [UI] Comando aprobado: ${commandId}`);
+
+    const messageDiv = document.querySelector(`[data-command-id="${commandId}"]`);
+    if (messageDiv) {
+      // Actualizar el mensaje para mostrar que fue aprobado
+      const waitingDiv = messageDiv.querySelector('.command-waiting');
+      if (waitingDiv) {
+        waitingDiv.innerHTML = '<span style="color: #22c55e;">✅ Comando aprobado - Ejecutando...</span>';
+      }
+
+      // Remover los botones de confirmación
+      const overlay = messageDiv.querySelector('.command-confirmation-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    try {
+      // Enviar aprobación al backend
+      const result = await window.electronAPI.approveCommand(commandId);
+
+      if (result && result.success) {
+        // Mostrar resultado del comando
+        if (result.output) {
+          this.addMessage("assistant", result.output);
+        }
+      } else {
+        this.addMessage("error", `Error ejecutando comando: ${result.error || 'Error desconocido'}`);
+      }
+    } catch (error) {
+      console.error("Error aprobando comando:", error);
+      this.addMessage("error", `Error ejecutando comando: ${error.message}`);
+    }
+
+    // Limpiar comando pendiente
+    this.pendingCommands.delete(commandId);
+
+    // Reanudar el procesamiento de AI
+    this.setAIProcessing(false);
+  }
+
+  /**
+   * Rechaza la ejecución de un comando
+   */
+  async rejectCommand(commandId) {
+    console.log(`❌ [UI] Comando rechazado: ${commandId}`);
+
+    const messageDiv = document.querySelector(`[data-command-id="${commandId}"]`);
+    if (messageDiv) {
+      // Actualizar el mensaje para mostrar que fue rechazado
+      const waitingDiv = messageDiv.querySelector('.command-waiting');
+      if (waitingDiv) {
+        waitingDiv.innerHTML = '<span style="color: #ef4444;">❌ Comando cancelado</span>';
+      }
+
+      // Remover los botones de confirmación
+      const overlay = messageDiv.querySelector('.command-confirmation-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    try {
+      // Enviar rechazo al backend
+      await window.electronAPI.rejectCommand(commandId);
+      // No mostrar ningún mensaje adicional cuando se rechaza
+    } catch (error) {
+      console.error("Error rechazando comando:", error);
+    }
+
+    // Limpiar comando pendiente
+    this.pendingCommands.delete(commandId);
+
+    // Reanudar el procesamiento de AI
+    this.setAIProcessing(false);
   }
 
   // ===== MESSAGE DISPLAY =====
@@ -844,12 +1118,19 @@ Responde SOLO con una palabra: reasoning, tool-execution, o assistant`;
 
   async checkContinuousReasoningStatus() {
     try {
+      // Verificar que electronAPI y invoke estén disponibles
+      if (!window.electronAPI || !window.electronAPI.invoke) {
+        // En modo de prueba o desarrollo, simplemente no hacer nada
+        return;
+      }
+
       const result = await window.electronAPI.invoke(
         "is-continuous-reasoning-active",
       );
       this.updateStopButtonVisibility(result.active);
     } catch (error) {
-      console.error("Error checking continuous reasoning status:", error);
+      // No mostrar errores de IPC como errores críticos
+      console.log("Continuous reasoning status check skipped:", error.message);
     }
   }
 
@@ -910,8 +1191,14 @@ Responde SOLO con una palabra: reasoning, tool-execution, o assistant`;
           config.autoApproveRead || false;
         document.getElementById("autoApproveListCheckbox").checked =
           config.autoApproveList || false;
+        document.getElementById("autoRunCommandsCheckbox").checked =
+          config.autoRunCommands || false;
         document.getElementById("confirmDangerousCheckbox").checked =
           config.confirmDangerous !== false;
+
+        // Memory settings
+        document.getElementById("persistentMemoryCheckbox").checked =
+          config.persistentMemory !== false; // Por defecto true
 
         // Trigger model change handler to show/hide fields as needed
         this.handleModelChange(selectedModel);
@@ -970,10 +1257,17 @@ Responde SOLO con una palabra: reasoning, tool-execution, o assistant`;
           .checked,
         autoApproveList: document.getElementById("autoApproveListCheckbox")
           .checked,
+        autoRunCommands: document.getElementById("autoRunCommandsCheckbox")
+          .checked,
         confirmDangerous: document.getElementById("confirmDangerousCheckbox")
+          .checked,
+
+        // Memory settings
+        persistentMemory: document.getElementById("persistentMemoryCheckbox")
           .checked,
       };
 
+      console.log("🔧 [Renderer] Saving config:", JSON.stringify(config, null, 2));
       await window.electronAPI.updateAIConfig(config);
       this.settings = { ...this.settings, ...config };
       this.updateAIStatus();
@@ -1206,6 +1500,42 @@ Responde SOLO con una palabra: reasoning, tool-execution, o assistant`;
     }
   }
 
+  /**
+   * Maneja las solicitudes de confirmación de comandos desde el backend
+   */
+  handleCommandConfirmationRequest(commandData) {
+    console.log("🔔 [UI] Solicitud de confirmación de comando recibida:", commandData);
+
+    const { commandId, command, directory, description, autoApprove } = commandData;
+
+    // Almacenar el comando pendiente
+    this.pendingCommands.set(commandId, commandData);
+
+    // Mostrar el comando en el chat esperando confirmación
+    this.showCommandConfirmation(commandId, command, directory, description, autoApprove);
+
+    // Pausar el procesamiento de AI hasta que se confirme o rechace
+    this.setAIProcessing(true);
+  }
+
+  /**
+   * Maneja la auto-aprobación de comandos en modo auto-run
+   */
+  handleCommandAutoApproved(data) {
+    console.log("🚀 [UI] Comando auto-aprobado:", data);
+
+    const { commandId } = data;
+    const messageDiv = document.querySelector(`[data-command-id="${commandId}"]`);
+
+    if (messageDiv) {
+      // Actualizar el mensaje para mostrar que fue aprobado automáticamente
+      const waitingDiv = messageDiv.querySelector('.command-waiting');
+      if (waitingDiv) {
+        waitingDiv.innerHTML = '<span style="color: #22c55e;">✅ Comando aprobado - Ejecutando...</span>';
+      }
+    }
+  }
+
   // ===== COMMAND OUTPUT STREAMING =====
 
   setupCommandOutputListener() {
@@ -1301,6 +1631,15 @@ document.addEventListener("DOMContentLoaded", () => {
 // Handle window errors
 window.addEventListener("error", (event) => {
   console.error("Global error:", event.error);
+
+  // No mostrar errores de IPC como errores críticos
+  const errorMessage = event.error?.message || "";
+  if (errorMessage.includes("log-from-renderer") ||
+      errorMessage.includes("No handler registered") ||
+      errorMessage.includes("electronAPI")) {
+    return; // Ignorar errores de IPC/electronAPI
+  }
+
   if (window.clineAI) {
     window.clineAI.showMessage("An unexpected error occurred", "error");
   }
@@ -1309,6 +1648,15 @@ window.addEventListener("error", (event) => {
 // Handle unhandled promise rejections
 window.addEventListener("unhandledrejection", (event) => {
   console.error("Unhandled promise rejection:", event.reason);
+
+  // No mostrar errores de IPC como errores críticos
+  const errorMessage = event.reason?.message || event.reason || "";
+  if (errorMessage.includes("log-from-renderer") ||
+      errorMessage.includes("No handler registered") ||
+      errorMessage.includes("electronAPI")) {
+    return; // Ignorar errores de IPC/electronAPI
+  }
+
   if (window.clineAI) {
     window.clineAI.showMessage("An unexpected error occurred", "error");
   }
