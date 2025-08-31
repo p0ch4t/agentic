@@ -4,14 +4,27 @@
   "description": "Desktop application integrating Cline AI agent",
   "main": "dist/main.js",
   "scripts": {
-    "dev": "concurrently \"npm run build:watch\" \"npm run electron:dev\"",
+    "dev": "DEBUG_MODE=true NODE_ENV=development concurrently \"npm run build:watch\" \"npm run electron:dev\"",
+    "dev:production": "concurrently \"npm run build:watch\" \"npm run electron:dev\"",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "electron:dev": "wait-on dist/main.js && electron .",
     "package": "npm run build && electron-builder",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron .",
+    "view-logs": "find ~/.cline-desktop/debug-logs -name 'debug_conversation_*.log' -type f -exec ls -lt {} + | head -1 | awk '{print $NF}' | xargs cat | tail -50",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:ui": "playwright test --ui",
+    "test:install": "playwright install"
   },
-  "keywords": ["cline", "ai", "agent", "electron", "desktop"],
+  "keywords": [
+    "cline",
+    "ai",
+    "agent",
+    "electron",
+    "desktop"
+  ],
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
@@ -20,13 +33,19 @@
     "electron": "^28.0.0",
     "electron-builder": "^24.0.0",
     "typescript": "^5.0.0",
-    "wait-on": "^7.0.0"
+    "wait-on": "^7.0.0",
+    "@playwright/test": "^1.40.0",
+    "playwright": "^1.40.0"
   },
   "dependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
+    "@anthropic-ai/sdk": "^0.60.0",
     "@types/react": "^18.0.0",
-    "@types/react-dom": "^18.0.0"
+    "@types/react-dom": "^18.0.0",
+    "axios": "^1.11.0",
+    "glob": "^11.0.3",
+    "openai": "^5.15.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0"
   },
   "build": {
     "appId": "com.yourcompany.cline-desktop",
