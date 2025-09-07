@@ -1196,9 +1196,9 @@ Responde SOLO con una palabra: reasoning, tool-execution, o assistant`;
         document.getElementById("confirmDangerousCheckbox").checked =
           config.confirmDangerous !== false;
 
-        // Memory settings
+        // Memory settings - TEMPORALMENTE DESHABILITADO
         document.getElementById("persistentMemoryCheckbox").checked =
-          config.persistentMemory !== false; // Por defecto true
+          config.persistentMemory === true; // Por defecto false (deshabilitado temporalmente)
 
         // Trigger model change handler to show/hide fields as needed
         this.handleModelChange(selectedModel);

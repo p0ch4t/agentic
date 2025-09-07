@@ -82,7 +82,8 @@ export class ConfigurationManager {
       normalized.autoApproveList = safetySettings.autoApproveList || false;
       normalized.autoRunCommands = safetySettings.autoRunCommands || false;
       normalized.confirmDangerous = safetySettings.confirmDangerous !== false;
-      normalized.persistentMemory = safetySettings.persistentMemory !== false;
+      // TEMPORALMENTE DESHABILITADO: Memoria persistente deshabilitada por defecto
+      normalized.persistentMemory = safetySettings.persistentMemory === true;
 
       console.log(`🔍 [ConfigurationManager] Mapped safety settings:`, {
         safetySettings,
@@ -136,7 +137,8 @@ export class ConfigurationManager {
       autoApproveList: frontendConfig.autoApproveList || false,
       autoRunCommands: frontendConfig.autoRunCommands || false,
       confirmDangerous: frontendConfig.confirmDangerous !== false,
-      persistentMemory: frontendConfig.persistentMemory !== false // Por defecto true
+      // TEMPORALMENTE DESHABILITADO: Memoria persistente deshabilitada por defecto
+      persistentMemory: frontendConfig.persistentMemory === true // Por defecto false
     };
 
     console.log(`🔍 [ConfigurationManager] Denormalizing frontend config:`, {

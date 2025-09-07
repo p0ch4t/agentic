@@ -539,17 +539,20 @@ Responde ÚNICAMENTE con "ÉXITO" si la respuesta satisface completamente la sol
   private async clearConversationMemoryIfNeeded(): Promise<void> {
     try {
       const safetySettings = await this.cacheService.getSafetySettings();
-      const persistentMemory = safetySettings?.persistentMemory !== false; // Por defecto true
+      // TEMPORALMENTE DESHABILITADO: Memoria persistente deshabilitada por defecto
+      const persistentMemory = safetySettings?.persistentMemory === true; // Por defecto false
 
       if (!persistentMemory) {
-        console.log('🧹 [Memory] User has disabled persistent memory, clearing conversation memory...');
+        console.log('🧹 [Memory] Persistent memory disabled (default), clearing conversation memory...');
         await this.clearConversationMemory();
       } else {
-        console.log('🧠 [Memory] Persistent memory enabled, keeping conversation memory...');
+        console.log('🧠 [Memory] Persistent memory explicitly enabled, keeping conversation memory...');
       }
     } catch (error) {
       console.error('❌ [Memory] Error checking memory settings:', error);
-      // En caso de error, mantener memoria por seguridad
+      // TEMPORALMENTE DESHABILITADO: En caso de error, limpiar memoria por seguridad
+      console.log('🧹 [Memory] Error occurred, clearing memory as safety measure...');
+      await this.clearConversationMemory();
     }
   }
 

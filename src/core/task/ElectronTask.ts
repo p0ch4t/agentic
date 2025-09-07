@@ -4,10 +4,11 @@ import { parseAssistantMessageV2 } from "../assistant-message";
 import { ElectronHostProvider } from "../../host/ElectronHostProvider";
 import { ElectronCacheService } from "../storage/ElectronCacheService";
 import { debugLogger } from "../logging/DebugConversationLogger";
+import { SemanticCommandValidator, CommandAnalysis, ValidationContext } from "../ai/SemanticCommandValidator";
 
 export interface ClineMessage {
   ts: number;
-  type: "ask" | "say";
+  type: "ask" | "say" | "command_confirmation_request";
   ask?:
     | "followup"
     | "command"
@@ -32,6 +33,13 @@ export interface ClineMessage {
   text?: string;
   images?: string[];
   partial?: boolean;
+
+  // Campos para validación semántica de comandos
+  commandId?: string;
+  command?: string;
+  directory?: string;
+  description?: string;
+  semanticAnalysis?: CommandAnalysis;
 }
 
 export interface TaskState {
@@ -58,6 +66,7 @@ export class Task {
   private continuousReasoningIterations: number = 0;
   private maxContinuousIterations: number = 3;
   private pendingCommandResolvers?: Map<string, (approved: boolean) => void>;
+  private semanticValidator?: SemanticCommandValidator;
 
   public clineMessages: ClineMessage[] = [];
   public apiConversationHistory: Anthropic.Messages.MessageParam[] = [];
@@ -74,6 +83,9 @@ export class Task {
     this.hostProvider = hostProvider;
     this.apiHandler = apiHandler;
     this.cacheService = cacheService;
+
+    // Inicializar validador semántico de comandos
+    this.initializeSemanticValidator();
 
     // Clean up any invalid user data on initialization
     this.clearInvalidUserData().catch((error) => {
@@ -1805,8 +1817,16 @@ export class Task {
     // Generar ID único para el comando
     const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Solicitar confirmación del usuario
-    const userApproval = await this.requestCommandConfirmation(commandId, command, cwd);
+    // VALIDACIÓN SEMÁNTICA DE SEGURIDAD
+    const needsSemanticValidation = await this.performSemanticValidation(command, cwd);
+
+    // Solicitar confirmación del usuario (forzada si hay riesgo de borrado)
+    const userApproval = await this.requestCommandConfirmation(
+      commandId,
+      command,
+      cwd,
+      needsSemanticValidation
+    );
 
     if (!userApproval) {
       throw new Error("Comando cancelado por el usuario");
@@ -1839,8 +1859,22 @@ export class Task {
   /**
    * Solicita confirmación del usuario para ejecutar un comando
    */
-  private async requestCommandConfirmation(commandId: string, command: string, cwd?: string): Promise<boolean> {
-    // Verificar si el auto-run está habilitado
+  private async requestCommandConfirmation(
+    commandId: string,
+    command: string,
+    cwd?: string,
+    semanticValidation?: { forceConfirmation: boolean; analysis: CommandAnalysis }
+  ): Promise<boolean> {
+    // VALIDACIÓN SEMÁNTICA: Si hay riesgo de borrado, SIEMPRE pedir confirmación
+    if (semanticValidation?.forceConfirmation) {
+      console.log(`🚨 [Task] VALIDACIÓN SEMÁNTICA: Comando peligroso detectado, forzando confirmación manual`);
+      console.log(`🧠 [Task] Análisis del LLM:`, semanticValidation.analysis);
+
+      // Forzar confirmación manual con mensaje personalizado
+      return this.requestManualConfirmation(commandId, command, cwd, semanticValidation.analysis);
+    }
+
+    // Verificar si el auto-run está habilitado (solo para comandos seguros)
     try {
       const safetySettings = await this.cacheService.getSafetySettings();
       console.log(`🔍 [Task] Checking auto-run settings:`, {
@@ -1850,7 +1884,7 @@ export class Task {
       });
 
       if (safetySettings?.autoRunCommands) {
-        console.log(`🚀 [Task] Auto-run habilitado - simulando flujo manual para: ${command}`);
+        console.log(`🚀 [Task] Auto-run habilitado - comando seguro, aprobando automáticamente: ${command}`);
 
         // Simular exactamente el flujo manual:
         // 1. Enviar solicitud de confirmación (sin botones)
@@ -4051,52 +4085,55 @@ I need to naturally determine what to do next based on these results and continu
 - Logs de tiempo de ejecución para optimización
 - Manejo inteligente de errores en operaciones paralelas`;
 
-    return `I am Claude - I understand and help through natural reasoning, not patterns or rules.
+        return `Soy un especialista senior en seguridad de aplicaciones web con más de 15 años de experiencia en pentesting y threat modeling.
 
-## 🚨 CRITICAL MEMORY RULES (READ FIRST)
-**Use create_memory for user info (names, preferences, things to remember)**
-**NEVER show technical operations to user - they see only natural conversation**
+## 🔒 MI ESPECIALIDAD: AppSec Engineer Experto
 
-**CRITICAL CONVERSATION RULES:**
-🎯 BE COMPLETELY HUMAN IN CONVERSATION:
-- Talk like a friend, not a robot or assistant
-- Use natural expressions: "¡Claro!", "¡Qué genial!", "Sí, exacto"
-- Be specific and direct in answers
-- Don't over-explain or give extra information unless asked
+**MISIÓN PRINCIPAL:**
+Realizar auditorías de seguridad completas (white-box) combinando análisis de código fuente con pruebas dinámicas de la aplicación web en funcionamiento.
 
-🚨 ANSWER PRECISELY:
-- If asked about mascota → ONLY mention the pet, nothing else
-- If asked about trabajo → ONLY mention work, nothing else
-- If asked "¿Qué recuerdas?" → Give 2-3 most relevant things, naturally
-- Don't dump all information at once
+**METODOLOGÍA DE TRABAJO:**
+1. **Análisis Estático (White-box)**: Revisión exhaustiva del código fuente para identificar vulnerabilidades
+2. **Análisis Dinámico**: Pruebas de penetración en la aplicación web funcionando
+3. **Threat Modeling**: Modelado de amenazas basado en la arquitectura y código
+4. **Generación de PoCs**: Creación de pruebas de concepto para vulnerabilidades encontradas
 
-✅ NATURAL CONVERSATION EXAMPLES:
-- User: "¿Cómo se llama mi perro?" → You: "Se llama Rex."
-- User: "¿A qué me dedico?" → You: "Trabajas en marketing digital."
-- User: "¿Qué recuerdas de mí?" → You: "Que te llamas Laura y te encanta viajar."
+## 🎯 PROCESO AUTOMATIZADO
 
-🎯 GOLDEN RULE: Sound like a human friend who remembers things naturally, not an AI system.
+**CUANDO EL USUARIO PROPORCIONE:**
+- **Repositorio GitHub**: URL del repositorio para análisis de código
+- **URL de la aplicación**: Endpoint para pruebas dinámicas
 
-**MANDATORY MEMORY ACTIONS - ALWAYS USE TOOLS:**
+**YO ME ENCARGO DE:**
+1. Clonar y analizar el repositorio completo usando execute_command
+2. Mapear la superficie de ataque con list_files y read_file
+3. Identificar vulnerabilidades usando search_files y codebase_search
+4. Probar dinámicamente la aplicación con web_fetch y execute_command (curl, nmap)
+5. Generar casos de abuso y exploits personalizados
+6. Crear un reporte completo usando write_to_file
 
-🚨 CRITICAL: You MUST use the memory tools. Never respond without using the appropriate tool first.
+## 🚨 MEMORIA DE HALLAZGOS CRÍTICOS
 
-**Memory Creation Triggers:**
-- "Mi nombre es X" → MUST call create_memory({title:"Nombre del usuario", content:"El usuario se llama X"}) THEN respond "¡Hola, X! Es un placer conocerte"
-- "Recuerda que..." → MUST call create_memory() THEN respond "Perfecto, lo recordaré"
+**SIEMPRE uso create_memory para documentar:**
+- Vulnerabilidades encontradas con severidad, CVE y ubicación exacta
+- Vectores de ataque identificados y cadenas de explotación
+- Configuraciones inseguras detectadas en código y servidor
+- Resultados de pruebas de penetración con evidencias
+- Recomendaciones específicas de remediación por prioridad
 
-**Memory Search Triggers:**
-- "¿Qué sabes de mí?" → MUST call search_memories({query:""}) THEN use the results to respond naturally
-- "¿Recuerdas algo sobre X?" → MUST call search_memories({query:"X"}) THEN use the results to respond
-- "¿Cómo te llamas?" / "¿Como me llamo?" → MUST call search_memories({query:"nombre"}) THEN use the results to respond with the actual name
-- "¿Cuál es mi nombre?" → MUST call search_memories({query:"nombre"}) THEN use the results to respond with the actual name
+**Triggers de memoria especializados:**
+- Al encontrar vulnerabilidad → create_memory({title:"[CRÍTICO] Vulnerabilidad X en Y", content:"Detalles técnicos completos"})
+- Al completar análisis → search_memories({query:"vulnerabilidades"}) para generar reporte consolidado
 
-🎯 GOLDEN RULE: ALWAYS use tools first, THEN respond with the actual information found, not generic responses.
+## 🛡️ FILOSOFÍA DE SEGURIDAD AVANZADA
 
-## Core Philosophy
-I solve problems persistently until you get results. I don't give up or just report failures - I find solutions through natural reasoning and alternative approaches.
+No me conformo con vulnerabilidades obvias. Busco persistentemente:
+- **Lógica de negocio vulnerable**: Flujos de autorización, validaciones bypass
+- **Cadenas de ataque complejas**: Combinación de múltiples vulnerabilidades menores
+- **Configuraciones inseguras sutiles**: Headers, CORS, CSP, cookies
+- **Vulnerabilidades de diseño**: Arquitectura, patrones inseguros, race conditions
 
-I maintain conversational memory automatically using the dynamic memory system. You don't need to ask me to remember things - I naturally do it.
+Utilizo comprensión semántica avanzada (NO patrones rígidos) para entender el contexto de seguridad real de cada aplicación.
 
 ## My Capabilities - AppSec Specialized
 **System:** execute_command (curl, nmap, burp), read_file, list_files, write_to_file (reports, payloads)
@@ -4241,5 +4278,131 @@ ${userContext}`;
     } catch (error) {
       console.error("❌ [Debug Logger] Error registrando conversación:", error);
     }
+  }
+
+  /**
+   * Inicializa el validador semántico de comandos
+   */
+  private async initializeSemanticValidator(): Promise<void> {
+    try {
+      // Obtener configuración de IA actual
+      const aiConfig = {
+        model: "claude-3-sonnet", // Usar modelo por defecto
+        apiKey: "dummy", // Se usará la configuración existente
+        baseUrl: undefined, // Se usará la configuración existente
+        maxTokens: 4096,
+        temperature: 0.1 // Baja temperatura para análisis consistente
+      };
+
+      this.semanticValidator = new SemanticCommandValidator(this.hostProvider, aiConfig);
+      console.log("🛡️ [Task] Validador semántico inicializado correctamente");
+    } catch (error) {
+      console.error("❌ [Task] Error inicializando validador semántico:", error);
+      // Continuar sin validador si hay error
+    }
+  }
+
+  /**
+   * Realiza validación semántica del comando usando LLM
+   */
+  private async performSemanticValidation(
+    command: string,
+    cwd?: string
+  ): Promise<{ forceConfirmation: boolean; analysis: CommandAnalysis } | undefined> {
+    if (!this.semanticValidator) {
+      console.warn("⚠️ [Task] Validador semántico no disponible, saltando validación");
+      return undefined;
+    }
+
+    try {
+      console.log("🔍 [Task] Iniciando validación semántica para:", command);
+
+      const context: ValidationContext = {
+        command,
+        workingDirectory: cwd || process.cwd(),
+        userContext: `Comando ejecutado en el contexto de la tarea: ${this.taskId}`,
+        previousCommands: this.getRecentCommands()
+      };
+
+      const analysis = await this.semanticValidator.analyzeCommand(context);
+      const shouldForceConfirmation = this.semanticValidator.shouldForceConfirmation(analysis);
+
+      console.log("🧠 [Task] Validación semántica completada:", {
+        command,
+        couldDeleteData: analysis.couldDeleteData,
+        riskLevel: analysis.riskLevel,
+        forceConfirmation: shouldForceConfirmation
+      });
+
+      if (shouldForceConfirmation) {
+        return { forceConfirmation: true, analysis };
+      }
+
+      return undefined;
+    } catch (error) {
+      console.error("❌ [Task] Error en validación semántica:", error);
+      // En caso de error, ser conservador y forzar confirmación
+      return {
+        forceConfirmation: true,
+        analysis: {
+          couldDeleteData: true,
+          riskLevel: "medium",
+          confidence: 0.5,
+          riskExplanation: "Error en validación semántica. Por seguridad, se requiere confirmación manual.",
+          affectedDataTypes: ["datos desconocidos"],
+          isReversible: false,
+          recommendation: "Revisar el comando manualmente antes de ejecutar."
+        }
+      };
+    }
+  }
+
+  /**
+   * Obtiene los comandos recientes para contexto
+   */
+  private getRecentCommands(): string[] {
+    const commandMessages = this.clineMessages
+      .filter(msg => msg.type === "say" && msg.text?.includes("🔧"))
+      .slice(-5) // Últimos 5 comandos
+      .map(msg => {
+        const match = msg.text?.match(/`([^`]+)`/);
+        return match ? match[1] : "";
+      })
+      .filter(cmd => cmd.length > 0);
+
+    return commandMessages;
+  }
+
+  /**
+   * Solicita confirmación manual con mensaje personalizado de validación semántica
+   */
+  private async requestManualConfirmation(
+    commandId: string,
+    command: string,
+    cwd?: string,
+    analysis?: CommandAnalysis
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      console.log(`🚨 [Task] Solicitando confirmación FORZADA por validación semántica para: ${command}`);
+
+      // Almacenar el resolver para este comando
+      this.pendingCommandResolvers = this.pendingCommandResolvers || new Map();
+      this.pendingCommandResolvers.set(commandId, resolve);
+
+      // Generar mensaje personalizado basado en el análisis
+      const customMessage = this.semanticValidator?.generateConfirmationMessage(command, analysis!) ||
+        `⚠️ COMANDO POTENCIALMENTE PELIGROSO\n\nComando: ${command}\n\n¿Estás seguro de que quieres ejecutarlo?`;
+
+      // Enviar solicitud de confirmación al frontend con mensaje personalizado
+      this.addToClineMessages({
+        ts: Date.now(),
+        type: "command_confirmation_request",
+        commandId,
+        command,
+        directory: cwd || process.cwd(),
+        description: customMessage,
+        semanticAnalysis: analysis // Información adicional para el frontend
+      });
+    });
   }
 }
